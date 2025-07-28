@@ -20,7 +20,9 @@ const App: React.FC = () => {
     // Ignore specific warnings that we handle gracefully
     LogBox.ignoreLogs([
       'Error fetching Remark Ratio',
+      'Error fetching Defects by Module',
       'AxiosError: Request failed with status code 404',
+      'AxiosError: Request failed with status code 400',
       'Network Error',
       'timeout'
     ]);

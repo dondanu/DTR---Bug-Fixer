@@ -8,6 +8,7 @@ import { getDefectSeverityIndex } from '../api/dsi';
 import { getDefectRemarkRatioByProjectId } from '../api/remarkratio';
 import { getReopenCountSummary } from '../api/Defectreopen';
 import { getDefectTypeByProjectId } from '../api/defecttype';
+import { getDefectsByModule } from '../api/defectbymodule';
 import DynamicPieChart from './DynamicPieChart';
 
 const screenWidth = Dimensions.get('window').width;
@@ -46,6 +47,8 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const [severitySummary, setSeveritySummary] = useState<any>(null);
   const [reopenCountData, setReopenCountData] = useState<any>(null);
   const [defectTypeData, setDefectTypeData] = useState<any>(null);
+  const [defectsByModuleData, setDefectsByModuleData] = useState<any>(null);
+  const [defectsByModuleError, setDefectsByModuleError] = useState<boolean>(false);
   const [remarkRatioError, setRemarkRatioError] = useState<boolean>(false);
 
   // Debug: Log whenever severitySummary changes
@@ -86,6 +89,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
       try {
         setLoading(true);
         setRemarkRatioError(false); // Reset error state
+        setDefectsByModuleError(false); // Reset error state
 
         // API Call 1: Fetch defect statistics for selected project
         const defectStatsUrl = `http://34.56.162.48:8087/api/v1/defect-statistics/${selectedProjectTab}`;
@@ -235,6 +239,13 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               severityIndex: dsiData.data.dsiPercentage
             }));
             console.log('✅ DSI Percentage updated to:', dsiData.data.dsiPercentage + '%');
+          } else if (dsiData && dsiData.data === 0) {
+            // Handle case where API returns "data": 0
+            setDefectStats(prevStats => ({
+              ...prevStats,
+              severityIndex: 0
+            }));
+            console.log('✅ DSI Percentage set to 0 (no valid defects found)');
           } else {
             console.log('⚠️ DSI data not in expected format:', dsiData);
             console.log('Expected dsiPercentage field, got:', dsiData?.data);
@@ -350,6 +361,37 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           console.error('Error fetching Defect Type:', defectTypeError);
           console.log('🔄 Keeping default Defect Type data');
           setDefectTypeData(null);
+        }
+
+        // API Call 8: Fetch defects by module
+        try {
+          console.log('📊 API Request Details:');
+          console.log('Request URL: Defects by Module API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const defectsByModuleResponse = await getDefectsByModule(selectedProjectTab);
+          console.log('📊 Defects by Module API Response:', JSON.stringify(defectsByModuleResponse, null, 2));
+
+          // Update the defectsByModuleData with the real data
+          if (defectsByModuleResponse && defectsByModuleResponse.data && Array.isArray(defectsByModuleResponse.data) && defectsByModuleResponse.data.length > 0) {
+            setDefectsByModuleData(defectsByModuleResponse.data);
+            console.log('✅ Defects by Module Data updated:', defectsByModuleResponse.data);
+          } else if (defectsByModuleResponse &&
+                     (defectsByModuleResponse.message?.includes("No data found") ||
+                      (Array.isArray(defectsByModuleResponse.data) && defectsByModuleResponse.data.length === 0))) {
+            setDefectsByModuleData("NO_DATA");
+            console.log('ℹ️ No defects by module data found for this project');
+          } else {
+            setDefectsByModuleData(null);
+            console.log('ℹ️ No defects by module data available for this project');
+          }
+        } catch (defectsByModuleError: any) {
+          // Silently handle the error - only log to console, don't show error screen
+          console.error('Error fetching Defects by Module:', defectsByModuleError);
+          setDefectsByModuleError(true); // Set error state
+          console.log('🔄 Keeping default Defects by Module data');
+          setDefectsByModuleData(null);
+          // Don't re-throw the error to prevent frontend error screen
         }
 
       } catch (error) {
@@ -960,68 +1002,90 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           {/* Defects by Module Chart */}
           <View style={styles.moduleChartContainer}>
             <Text style={styles.moduleChartTitle}>Defects by Module</Text>
-            <View style={styles.moduleChartContent}>
-              {/* Pie Chart */}
-              <View style={styles.pieChartContainer}>
-                <View style={styles.pieChartPlaceholder}>
-                  <Text style={styles.pieChartText}>🥧 Pie Chart</Text>
-                </View>
-              </View>
 
-              {/* Legend */}
-              <View style={styles.legendContainer}>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#4285f4' }]} />
-                  <Text style={styles.legendText}>Configurations</Text>
-                  <Text style={styles.legendValue}>77 (17.30%)</Text>
+            {/* Check for errors or no data */}
+            {defectsByModuleError ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>Failed to load defects by module</Text>
+              </View>
+            ) : defectsByModuleData === "NO_DATA" ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>No data available.</Text>
+              </View>
+            ) : (
+              <View style={styles.moduleChartContent}>
+                {/* Dynamic Pie Chart */}
+                <View style={styles.pieChartContainer}>
+                  <DynamicPieChart
+                    data={defectsByModuleData && Array.isArray(defectsByModuleData) ?
+                      (() => {
+                        // Calculate total for percentages
+                        const total = defectsByModuleData.reduce((sum, item) => sum + (item.value || item.defectCount || item.count || 0), 0);
+
+                        return defectsByModuleData.map(item => ({
+                          defectType: item.name || item.moduleName || item.module || 'Unknown Module',
+                          defectCount: item.value || item.defectCount || item.count || 0,
+                          percentage: total > 0 ? (((item.value || item.defectCount || item.count || 0) / total) * 100) : 0
+                        }));
+                      })() : []
+                    }
+                    size={140}
+                    strokeWidth={2}
+                  />
                 </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#34a853' }]} />
-                  <Text style={styles.legendText}>Project Management</Text>
-                  <Text style={styles.legendValue}>50 (11.24%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#fbbc04' }]} />
-                  <Text style={styles.legendText}>Bench</Text>
-                  <Text style={styles.legendValue}>56 (12.58%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#ea4335' }]} />
-                  <Text style={styles.legendText}>Defects</Text>
-                  <Text style={styles.legendValue}>63 (14.16%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#ff6d01' }]} />
-                  <Text style={styles.legendText}>Test Cases</Text>
-                  <Text style={styles.legendValue}>45 (10.11%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#00bcd4' }]} />
-                  <Text style={styles.legendText}>Employee</Text>
-                  <Text style={styles.legendValue}>67 (15.06%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#9c27b0' }]} />
-                  <Text style={styles.legendText}>Releases</Text>
-                  <Text style={styles.legendValue}>15 (3.37%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#795548' }]} />
-                  <Text style={styles.legendText}>Project</Text>
-                  <Text style={styles.legendValue}>22 (4.94%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#607d8b' }]} />
-                  <Text style={styles.legendText}>Multi Template</Text>
-                  <Text style={styles.legendValue}>4 (0.90%)</Text>
-                </View>
-                <View style={styles.legendItem}>
-                  <View style={[styles.legendDot, { backgroundColor: '#e91e63' }]} />
-                  <Text style={styles.legendText}>Dashboard</Text>
-                  <Text style={styles.legendValue}>17 (3.82%)</Text>
+
+                {/* Dynamic Legend */}
+                <View style={styles.legendContainer}>
+                  {defectsByModuleData && Array.isArray(defectsByModuleData) && defectsByModuleData.length > 0 ? (
+                    (() => {
+                      const getColor = (index: number): string => {
+                        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#f97316', '#06b6d4', '#84cc16', '#ec4899', '#6b7280'];
+                        return colors[index % colors.length];
+                      };
+
+                      // Calculate total for percentages
+                      const total = defectsByModuleData.reduce((sum: number, item: any) => sum + (item.value || item.defectCount || item.count || 0), 0);
+
+                      return defectsByModuleData.map((item: any, index: number) => {
+                        const count = item.value || item.defectCount || item.count || 0;
+                        const percentage = total > 0 ? ((count / total) * 100).toFixed(2) : '0.00';
+                        const moduleName = item.name || item.moduleName || item.module || 'Unknown Module';
+
+                        return (
+                          <View key={index} style={styles.legendItem}>
+                            <View style={[
+                              styles.legendDot,
+                              { backgroundColor: getColor(index) }
+                            ]} />
+                            <Text style={styles.legendText}>{moduleName}</Text>
+                            <Text style={styles.legendValue}>{count} ({percentage}%)</Text>
+                          </View>
+                        );
+                      });
+                    })()
+                  ) : (
+                    // Fallback legend when no API data
+                    <>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#4285f4' }]} />
+                        <Text style={styles.legendText}>Configurations</Text>
+                        <Text style={styles.legendValue}>77 (17.30%)</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#34a853' }]} />
+                        <Text style={styles.legendText}>Project Management</Text>
+                        <Text style={styles.legendValue}>50 (11.24%)</Text>
+                      </View>
+                      <View style={styles.legendItem}>
+                        <View style={[styles.legendDot, { backgroundColor: '#fbbc04' }]} />
+                        <Text style={styles.legendText}>Bench</Text>
+                        <Text style={styles.legendValue}>56 (12.58%)</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
               </View>
-            </View>
+            )}
           </View>
         </View>
 
