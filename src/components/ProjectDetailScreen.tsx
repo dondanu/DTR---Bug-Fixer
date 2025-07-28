@@ -9,6 +9,8 @@ import { getDefectRemarkRatioByProjectId } from '../api/remarkratio';
 import { getReopenCountSummary } from '../api/Defectreopen';
 import { getDefectTypeByProjectId } from '../api/defecttype';
 import { getDefectsByModule } from '../api/defectbymodule';
+import { getDefectDensity } from '../api/defectdensity';
+import GaugeChart from './GaugeChart';
 import DynamicPieChart from './DynamicPieChart';
 
 const screenWidth = Dimensions.get('window').width;
@@ -256,7 +258,41 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           console.log('🔄 Keeping default DSI value');
         }
 
-        // API Call 5: Fetch defect to remark ratio
+        // API Call 5: Fetch defect density
+        console.log('🚀 STARTING DEFECT DENSITY API CALL');
+        try {
+          console.log('📊 API Request Details:');
+          console.log('Request URL: Defect Density API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const defectDensityData = await getDefectDensity(selectedProjectTab);
+          console.log('📊 Defect Density API Response:', JSON.stringify(defectDensityData, null, 2));
+
+          // Update the defectStats with the real defect density value
+          if (defectDensityData && defectDensityData.data && typeof defectDensityData.data.defectDensity === 'number') {
+            setDefectStats(prevStats => ({
+              ...prevStats,
+              density: defectDensityData.data.defectDensity
+            }));
+            console.log('✅ Defect Density updated to:', defectDensityData.data.defectDensity);
+          } else if (defectDensityData && defectDensityData.data === 0) {
+            // Handle case where API returns "data": 0
+            setDefectStats(prevStats => ({
+              ...prevStats,
+              density: 0
+            }));
+            console.log('✅ Defect Density set to 0 (no valid defects found)');
+          } else {
+            console.log('⚠️ Defect Density data not in expected format:', defectDensityData);
+            console.log('Expected defectDensity field, got:', defectDensityData?.data);
+            console.log('Available fields in response:', defectDensityData?.data ? Object.keys(defectDensityData.data) : 'No data object');
+          }
+        } catch (defectDensityError) {
+          console.error('Error fetching Defect Density:', defectDensityError);
+          console.log('🔄 Keeping default Defect Density value');
+        }
+
+        // API Call 6: Fetch defect to remark ratio
         try {
           console.log('📊 API Request Details:');
           console.log('Request URL: Remark Ratio API for project', selectedProjectTab);
@@ -607,41 +643,11 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         <View style={styles.statsTopRow}>
           {/* Defect Density */}
           <View style={styles.statCard}>
-            <Text style={styles.statCardTitle}>Defect Density</Text>
-            <View style={styles.defectDensityContainer}>
-              <Text style={styles.defectDensityLabel}>Defect Density: <Text style={styles.defectDensityValue}>{defectStats.density}</Text></Text>
-
-              {/* Full Semicircular Gauge Meter */}
-              <View style={styles.fullSemicircularGauge}>
-                {/* Complete Semicircle with 3 colors */}
-                <View style={styles.gaugeCircle}>
-                  {/* Green Section (0-7) - Left third */}
-                  <View style={styles.greenSection} />
-                  {/* Yellow Section (7-13) - Middle third */}
-                  <View style={styles.yellowSection} />
-                  {/* Red Section (13-20) - Right third */}
-                  <View style={styles.redSection} />
-
-                  {/* Inner white circle to create gauge thickness */}
-                  <View style={styles.innerWhiteCircle} />
-
-                  {/* Bottom white rectangle to hide bottom half */}
-                  <View style={styles.bottomHide} />
-                </View>
-
-                {/* Needle pointing to 10.12 */}
-                <View style={styles.needleAssembly}>
-                  <View style={styles.needleArm} />
-                  <View style={styles.needlePivot} />
-                </View>
-
-                {/* Scale numbers */}
-                <View style={styles.gaugeScale}>
-                  <Text style={styles.leftScale}>0</Text>
-                  <Text style={styles.rightScale}>20</Text>
-                </View>
-              </View>
-            </View>
+            <GaugeChart
+              value={defectStats.density}
+              title="Defect Density"
+              size={180}
+            />
           </View>
 
           {/* Defect Severity Index */}
