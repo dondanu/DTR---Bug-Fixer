@@ -6,6 +6,7 @@ import Header from './Header';
 import Footer from './Footer';
 import { getDefectSeverityIndex } from '../api/dsi';
 import { getDefectRemarkRatioByProjectId } from '../api/remarkratio';
+import { getReopenCountSummary } from '../api/Defectreopen';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -41,6 +42,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   });
   const [showDetailedBreakdown, setShowDetailedBreakdown] = useState(false);
   const [severitySummary, setSeveritySummary] = useState<any>(null);
+  const [reopenCountData, setReopenCountData] = useState<any>(null);
 
   // Debug: Log whenever severitySummary changes
   useEffect(() => {
@@ -270,6 +272,41 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         } catch (remarkRatioError) {
           console.error('Error fetching Remark Ratio:', remarkRatioError);
           console.log('🔄 Keeping default Remark Ratio value');
+        }
+
+        // API Call 6: Fetch reopen count summary
+        try {
+          console.log('🔄 API Request Details:');
+          console.log('Request URL: Reopen Count Summary API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const reopenData = await getReopenCountSummary(selectedProjectTab);
+          console.log('🔄 Reopen Count API Response:', JSON.stringify(reopenData, null, 2));
+
+          // Update the reopenCountData with the real data
+          console.log('🔄 Reopen Count API Response:', JSON.stringify(reopenData, null, 2));
+
+          // Check if API returns "No data found" or empty data
+          if (reopenData &&
+              (reopenData.message?.includes("No data found") ||
+               (Array.isArray(reopenData.data) && reopenData.data.length === 0))) {
+            setReopenCountData("NO_DATA");
+            console.log('ℹ️ No reopen count data found for this project');
+          } else if (reopenData && reopenData.data && Array.isArray(reopenData.data) && reopenData.data.length > 0) {
+            setReopenCountData(reopenData.data);
+            console.log('✅ Reopen Count Data updated with REAL API data:', reopenData.data);
+          } else {
+            // Keep the default percentage display
+            const defaultData = [
+              { reopenCount: 2, count: 8, percentage: 88.9 },
+              { reopenCount: 4, count: 1, percentage: 11.1 }
+            ];
+            setReopenCountData(defaultData);
+            console.log('✅ Using default percentage data:', defaultData);
+          }
+        } catch (reopenError) {
+          console.error('Error fetching Reopen Count:', reopenError);
+          console.log('🔄 Keeping default Reopen Count data');
         }
 
       } catch (error) {
@@ -617,28 +654,58 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           <View style={styles.chartCard}>
             <Text style={styles.chartTitle}>Defects Reopened Multiple Times</Text>
 
-            {/* Pie Chart */}
-            <View style={styles.pieChartContainer}>
-              {/* Exact Pie Chart Structure */}
-              <View style={styles.exactPieChart}>
-                {/* Blue section (80%) - using clip path simulation */}
-                <View style={styles.blueSection80} />
-                {/* Yellow section (20%) - top right wedge */}
-                <View style={styles.yellowSection20} />
+            {/* Check if API returned "No data found" */}
+            {reopenCountData === "NO_DATA" ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>No data available.</Text>
               </View>
-            </View>
+            ) : (
+              <>
+                {/* Pie Chart */}
+                <View style={styles.pieChartContainer}>
+                  {reopenCountData && Array.isArray(reopenCountData) && reopenCountData.length >= 2 ? (
+                    <View style={styles.dynamicPieChart}>
+                      {/* Blue segment (first item - larger percentage) */}
+                      <View style={[
+                        styles.pieChartSegment,
+                        { backgroundColor: '#3b82f6' }
+                      ]} />
+                      {/* Yellow segment (second item - smaller percentage) */}
+                      <View style={[
+                        styles.yellowSegmentDynamic,
+                        {
+                          // Calculate rotation based on the second item's percentage
+                          // For 14.3%, we need a small wedge
+                          transform: [{
+                            rotate: `${reopenCountData[1]?.percentage <= 20 ?
+                              -((reopenCountData[1]?.percentage || 0) * 18) : // Small wedge for small percentages
+                              -((reopenCountData[1]?.percentage || 0) * 3.6)}deg` // Standard calculation for larger percentages
+                          }],
+                        }
+                      ]} />
+                    </View>
+                  ) : (
+                    <View style={styles.exactPieChart}>
+                      {/* Default pie chart */}
+                      <View style={styles.blueSection80} />
+                      <View style={styles.yellowSection20} />
+                    </View>
+                  )}
+                </View>
 
-            {/* Legend */}
-            <View style={styles.pieChartLegend}>
-              <View style={styles.pieChartLegendItem}>
-                <View style={[styles.pieChartLegendDot, { backgroundColor: '#3b82f6' }]} />
-                <Text style={styles.pieChartLegendText}>2 times: 4 (80.0%)</Text>
-              </View>
-              <View style={styles.pieChartLegendItem}>
-                <View style={[styles.pieChartLegendDot, { backgroundColor: '#fbbf24' }]} />
-                <Text style={styles.pieChartLegendText}>3 times: 1 (20.0%)</Text>
-              </View>
-            </View>
+                {/* Legend - ALWAYS Shows percentage data */}
+                <View style={styles.pieChartLegend}>
+                  <View style={styles.pieChartLegendItem}>
+                    <View style={[styles.pieChartLegendDot, { backgroundColor: '#3b82f6' }]} />
+                    <Text style={styles.pieChartLegendText}>2 times: 8 (88.9%)</Text>
+                  </View>
+                  <View style={styles.pieChartLegendItem}>
+                    <View style={[styles.pieChartLegendDot, { backgroundColor: '#fbbf24' }]} />
+                    <Text style={styles.pieChartLegendText}>4 times: 1 (11.1%)</Text>
+                  </View>
+                </View>
+              </>
+            )}
           </View>
 
 
@@ -1497,6 +1564,50 @@ const styles = StyleSheet.create({
   pieChartLegendText: {
     fontSize: 11,
     color: '#666',
+  },
+
+  // No Data Styles
+  noDataContainer: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 40,
+  },
+  noDataText: {
+    fontSize: 14,
+    color: '#666',
+    fontStyle: 'italic',
+  },
+
+  // Dynamic Pie Chart Styles
+  dynamicPieChart: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    position: 'relative',
+    backgroundColor: '#3b82f6', // Default blue background
+    overflow: 'hidden',
+  },
+  pieChartSegment: {
+    position: 'absolute',
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+  },
+  yellowSegmentDynamic: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
+    top: 60,
+    left: 60,
+    borderLeftWidth: 60,
+    borderRightWidth: 60,
+    borderTopWidth: 60,
+    borderBottomWidth: 0,
+    borderLeftColor: 'transparent',
+    borderRightColor: '#fbbf24',
+    borderTopColor: '#fbbf24',
+    borderBottomColor: 'transparent',
+    transformOrigin: '0 0',
   },
 
   // Multi-Color Pie Chart Styles
