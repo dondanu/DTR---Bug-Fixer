@@ -5,6 +5,7 @@ import {
 import Header from './Header';
 import Footer from './Footer';
 import { getDefectSeverityIndex } from '../api/dsi';
+import { getDefectRemarkRatioByProjectId } from '../api/remarkratio';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -34,7 +35,9 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
     low: { recent: 0, logical: 0, open: 0, fixed: 0, duplicate: 0, total: 3 },
     density: 10.12,
     severityIndex: 43.6,
-    remarkRatio: 97.75
+    remarkRatio: 97.75,
+    remarkCategory: 'High',
+    remarkColor: 'red'
   });
   const [showDetailedBreakdown, setShowDetailedBreakdown] = useState(false);
   const [severitySummary, setSeveritySummary] = useState<any>(null);
@@ -233,6 +236,40 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         } catch (dsiError) {
           console.error('Error fetching DSI:', dsiError);
           console.log('🔄 Keeping default DSI value');
+        }
+
+        // API Call 5: Fetch defect to remark ratio
+        try {
+          console.log('📊 API Request Details:');
+          console.log('Request URL: Remark Ratio API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const remarkRatioData = await getDefectRemarkRatioByProjectId(selectedProjectTab);
+          console.log('📊 Remark Ratio API Response:', JSON.stringify(remarkRatioData, null, 2));
+
+          // Update the defectStats with the real remark ratio value
+          if (remarkRatioData && remarkRatioData.data && remarkRatioData.data.ratio) {
+            // Parse ratio string (e.g., "98.09%") to number
+            const ratioString = remarkRatioData.data.ratio;
+            const ratioNumber = parseFloat(ratioString.replace('%', ''));
+
+            setDefectStats(prevStats => ({
+              ...prevStats,
+              remarkRatio: ratioNumber,
+              remarkCategory: remarkRatioData.data.category || 'Medium',
+              remarkColor: remarkRatioData.data.color || 'green'
+            }));
+            console.log('✅ Remark Ratio updated to:', ratioNumber + '%');
+            console.log('✅ Remark Category updated to:', remarkRatioData.data.category);
+            console.log('✅ Remark Color updated to:', remarkRatioData.data.color);
+          } else {
+            console.log('⚠️ Remark Ratio data not in expected format:', remarkRatioData);
+            console.log('Expected ratio, category, and color fields, got:', remarkRatioData?.data);
+            console.log('Available fields in response:', remarkRatioData?.data ? Object.keys(remarkRatioData.data) : 'No data object');
+          }
+        } catch (remarkRatioError) {
+          console.error('Error fetching Remark Ratio:', remarkRatioError);
+          console.log('🔄 Keeping default Remark Ratio value');
         }
 
       } catch (error) {
@@ -558,8 +595,18 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
             <View style={styles.remarkRatioContainer}>
               <Text style={styles.remarkRatioValue}>{defectStats.remarkRatio}%</Text>
               <Text style={styles.remarkRatioSubtext}>Defect Remark Ratio (%)</Text>
-              <View style={styles.remarkRatioBadge}>
-                <Text style={styles.remarkRatioBadgeText}>Medium</Text>
+              <View style={[
+                styles.remarkRatioBadge,
+                {
+                  backgroundColor:
+                    defectStats.remarkColor === 'green' ? '#10b981' :
+                    defectStats.remarkColor === 'yellow' ? '#fbbf24' :
+                    defectStats.remarkColor === 'blue' ? '#2563eb' :
+                    defectStats.remarkColor === 'red' ? '#dc2626' :
+                    '#10b981' // Default green
+                }
+              ]}>
+                <Text style={styles.remarkRatioBadgeText}>{defectStats.remarkCategory}</Text>
               </View>
             </View>
           </View>
@@ -1108,13 +1155,65 @@ const styles = StyleSheet.create({
   remarkRatioValue: { fontSize: 28, fontWeight: 'bold', color: '#222' },
   remarkRatioSubtext: { fontSize: 11, color: '#666', marginVertical: 4 },
   remarkRatioBadge: {
-    backgroundColor: '#f59e0b',
+    // backgroundColor is now set dynamically via inline styles
     paddingHorizontal: 12,
     paddingVertical: 4,
     borderRadius: 12,
     marginTop: 8,
   },
   remarkRatioBadgeText: { color: '#fff', fontSize: 12, fontWeight: 'bold' },
+
+  // New Remark Ratio Styles
+  remarkRatioLargeValue: {
+    fontSize: 48,
+    fontWeight: 'bold',
+    color: 'white',
+    textAlign: 'center',
+    marginVertical: 8,
+  },
+  remarkRatioSubtitle: {
+    fontSize: 14,
+    color: 'white',
+    textAlign: 'center',
+    marginBottom: 8,
+  },
+  remarkRatioStatusBadge: {
+    backgroundColor: 'rgba(255, 255, 255, 0.2)',
+    paddingHorizontal: 16,
+    paddingVertical: 6,
+    borderRadius: 16,
+    marginBottom: 16,
+    alignSelf: 'center',
+  },
+  remarkRatioStatusText: {
+    color: 'white',
+    fontSize: 14,
+    fontWeight: 'bold',
+  },
+  remarkRatioProgressContainer: {
+    marginTop: 8,
+  },
+  remarkRatioProgressBar: {
+    height: 8,
+    backgroundColor: 'rgba(255, 255, 255, 0.3)',
+    borderRadius: 4,
+    overflow: 'hidden',
+    marginBottom: 8,
+  },
+  remarkRatioProgressFill: {
+    height: '100%',
+    backgroundColor: 'white',
+    borderRadius: 4,
+  },
+  remarkRatioScale: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+  },
+  remarkRatioScaleLabel: {
+    color: 'white',
+    fontSize: 12,
+    fontWeight: '500',
+  },
 
   // Charts
   chartsRow: {
