@@ -4,6 +4,7 @@ import {
 } from 'react-native';
 import Header from './Header';
 import Footer from './Footer';
+import { getDefectSeverityIndex } from '../api/dsi';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -206,6 +207,32 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           }
         } else {
           console.error('Failed to fetch severity summary:', severityResponse.status);
+        }
+
+        // API Call 4: Fetch defect severity index
+        try {
+          console.log('📈 API Request Details:');
+          console.log('Request URL: DSI API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const dsiData = await getDefectSeverityIndex(selectedProjectTab);
+          console.log('📈 DSI API Response:', JSON.stringify(dsiData, null, 2));
+
+          // Update the defectStats with the real DSI percentage value
+          if (dsiData && dsiData.data && typeof dsiData.data.dsiPercentage === 'number') {
+            setDefectStats(prevStats => ({
+              ...prevStats,
+              severityIndex: dsiData.data.dsiPercentage
+            }));
+            console.log('✅ DSI Percentage updated to:', dsiData.data.dsiPercentage + '%');
+          } else {
+            console.log('⚠️ DSI data not in expected format:', dsiData);
+            console.log('Expected dsiPercentage field, got:', dsiData?.data);
+            console.log('Available fields in response:', dsiData?.data ? Object.keys(dsiData.data) : 'No data object');
+          }
+        } catch (dsiError) {
+          console.error('Error fetching DSI:', dsiError);
+          console.log('🔄 Keeping default DSI value');
         }
 
       } catch (error) {
@@ -467,10 +494,9 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               {/* Scale Labels */}
               <View style={styles.thermometerScale}>
                 <Text style={styles.scaleLabel}>100</Text>
-                <Text style={styles.scaleLabel}>80</Text>
-                <Text style={styles.scaleLabel}>60</Text>
-                <Text style={styles.scaleLabel}>40</Text>
-                <Text style={styles.scaleLabel}>20</Text>
+                <Text style={styles.scaleLabel}>75</Text>
+                <Text style={styles.scaleLabel}>50</Text>
+                <Text style={styles.scaleLabel}>25</Text>
                 <Text style={styles.scaleLabel}>0</Text>
               </View>
 
@@ -478,17 +504,45 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               <View style={styles.thermometerBody}>
                 {/* Background tube */}
                 <View style={styles.thermometerTube}>
-                  {/* Yellow fill (43.6% of 100) */}
-                  <View style={styles.thermometerFill} />
+                  {/* Dynamic fill based on DSI percentage */}
+                  <View style={[
+                    styles.thermometerFill,
+                    {
+                      height: `${Math.min(Math.max(defectStats.severityIndex, 0), 100)}%`,
+                      backgroundColor:
+                        defectStats.severityIndex > 75 ? '#dc2626' : // Red
+                        defectStats.severityIndex > 50 ? '#2563eb' : // Blue
+                        defectStats.severityIndex > 25 ? '#fbbf24' : // Yellow
+                        '#10b981' // Green
+                    }
+                  ]} />
                 </View>
 
                 {/* Thermometer bulb at bottom */}
-                <View style={styles.thermometerBulb} />
+                <View style={[
+                  styles.thermometerBulb,
+                  {
+                    backgroundColor:
+                      defectStats.severityIndex > 75 ? '#dc2626' : // Red
+                      defectStats.severityIndex > 50 ? '#2563eb' : // Blue
+                      defectStats.severityIndex > 25 ? '#fbbf24' : // Yellow
+                      '#10b981' // Green
+                  }
+                ]} />
               </View>
 
               {/* Value Display */}
               <View style={styles.thermometerValue}>
-                <Text style={styles.severityValue}>{defectStats.severityIndex}</Text>
+                <Text style={[
+                  styles.severityValue,
+                  {
+                    color:
+                      defectStats.severityIndex > 75 ? '#dc2626' : // Red
+                      defectStats.severityIndex > 50 ? '#2563eb' : // Blue
+                      defectStats.severityIndex > 25 ? '#fbbf24' : // Yellow
+                      '#10b981' // Green
+                  }
+                ]}>{defectStats.severityIndex}</Text>
               </View>
             </View>
 
@@ -1239,6 +1293,8 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     height: 100,
     marginRight: 8,
+    marginBottom: 20, // Move scale labels up to align with thermometer tube
+    paddingVertical: 2, // Add small padding for precise alignment
   },
   scaleLabel: {
     fontSize: 10,
@@ -1258,11 +1314,12 @@ const styles = StyleSheet.create({
     borderBottomLeftRadius: 0,
     borderBottomRightRadius: 0,
     overflow: 'hidden',
-    justifyContent: 'flex-end',
+    position: 'relative',
+    justifyContent: 'flex-end', // Ensure fill starts from bottom
   },
   thermometerFill: {
     width: '100%',
-    height: '43.6%', // 43.6% fill for the value 43.6
+    // height is now set dynamically via inline styles
     backgroundColor: '#fbbf24', // Yellow color
     borderRadius: 6,
     borderTopLeftRadius: 0,
