@@ -28,5 +28,6 @@ com.dtr.app-main-26 F:\My Projects~\Defect-Tracker-SGIC\android\app\src\main\res
 com.dtr.app-packaged_res-27 F:\My Projects~\Defect-Tracker-SGIC\node_modules\@react-native-async-storage\async-storage\android\build\intermediates\packaged_res\debug
 com.dtr.app-packaged_res-28 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-linear-gradient\android\build\intermediates\packaged_res\debug
 com.dtr.app-packaged_res-29 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-safe-area-context\android\build\intermediates\packaged_res\debug
-com.dtr.app-packaged_res-30 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-touch-id\android\build\intermediates\packaged_res\debug
-com.dtr.app-packaged_res-31 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-vector-icons\android\build\intermediates\packaged_res\debug
+com.dtr.app-packaged_res-30 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-svg\android\build\intermediates\packaged_res\debug
+com.dtr.app-packaged_res-31 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-touch-id\android\build\intermediates\packaged_res\debug
+com.dtr.app-packaged_res-32 F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-vector-icons\android\build\intermediates\packaged_res\debug

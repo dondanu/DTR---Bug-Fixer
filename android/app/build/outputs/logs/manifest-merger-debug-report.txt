@@ -11,6 +11,7 @@ MERGED from [com.facebook.flipper:flipper:0.182.0] C:\Users\hp\.gradle\caches\tr
 MERGED from [:react-native-async-storage_async-storage] F:\My Projects~\Defect-Tracker-SGIC\node_modules\@react-native-async-storage\async-storage\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-7:12
 MERGED from [:react-native-linear-gradient] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-linear-gradient\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-7:12
 MERGED from [:react-native-safe-area-context] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-safe-area-context\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-7:12
+MERGED from [:react-native-svg] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-svg\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-7:12
 MERGED from [:react-native-touch-id] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-touch-id\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-9:12
 MERGED from [:react-native-vector-icons] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-vector-icons\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:2:1-7:12
 MERGED from [com.facebook.react:react-android:0.72.6] C:\Users\hp\.gradle\caches\transforms-3\ce5dcc9cb4f5a6d0bf8099e84a76ddab\transformed\jetified-react-android-0.72.6-debug\AndroidManifest.xml:2:1-7:12
@@ -173,6 +174,8 @@ MERGED from [:react-native-linear-gradient] F:\My Projects~\Defect-Tracker-SGIC\
 MERGED from [:react-native-linear-gradient] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-linear-gradient\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
 MERGED from [:react-native-safe-area-context] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-safe-area-context\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
 MERGED from [:react-native-safe-area-context] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-safe-area-context\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
+MERGED from [:react-native-svg] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-svg\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
+MERGED from [:react-native-svg] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-svg\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
 MERGED from [:react-native-touch-id] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-touch-id\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
 MERGED from [:react-native-touch-id] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-touch-id\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44
 MERGED from [:react-native-vector-icons] F:\My Projects~\Defect-Tracker-SGIC\node_modules\react-native-vector-icons\android\build\intermediates\merged_manifest\debug\AndroidManifest.xml:5:5-44

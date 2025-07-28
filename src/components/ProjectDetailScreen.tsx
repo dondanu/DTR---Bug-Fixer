@@ -7,6 +7,8 @@ import Footer from './Footer';
 import { getDefectSeverityIndex } from '../api/dsi';
 import { getDefectRemarkRatioByProjectId } from '../api/remarkratio';
 import { getReopenCountSummary } from '../api/Defectreopen';
+import { getDefectTypeByProjectId } from '../api/defecttype';
+import DynamicPieChart from './DynamicPieChart';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -43,6 +45,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const [showDetailedBreakdown, setShowDetailedBreakdown] = useState(false);
   const [severitySummary, setSeveritySummary] = useState<any>(null);
   const [reopenCountData, setReopenCountData] = useState<any>(null);
+  const [defectTypeData, setDefectTypeData] = useState<any>(null);
 
   // Debug: Log whenever severitySummary changes
   useEffect(() => {
@@ -307,6 +310,40 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         } catch (reopenError) {
           console.error('Error fetching Reopen Count:', reopenError);
           console.log('🔄 Keeping default Reopen Count data');
+        }
+
+        // API Call 7: Fetch defect distribution by type
+        try {
+          console.log('📊 API Request Details:');
+          console.log('Request URL: Defect Type API for project', selectedProjectTab);
+          console.log('Request Method: GET');
+
+          const defectTypeResponse = await getDefectTypeByProjectId(selectedProjectTab);
+          console.log('📊 Defect Type API Response:', JSON.stringify(defectTypeResponse, null, 2));
+
+          // Update the defectTypeData with the real data
+          if (defectTypeResponse && defectTypeResponse.data && defectTypeResponse.data.defectTypes && Array.isArray(defectTypeResponse.data.defectTypes) && defectTypeResponse.data.defectTypes.length > 0) {
+            setDefectTypeData({
+              defectTypes: defectTypeResponse.data.defectTypes,
+              totalDefectCount: defectTypeResponse.data.totalDefectCount,
+              mostCommonDefectType: defectTypeResponse.data.mostCommonDefectType,
+              mostCommonDefectCount: defectTypeResponse.data.mostCommonDefectCount
+            });
+            console.log('✅ Defect Type Data updated:', defectTypeResponse.data);
+          } else if (defectTypeResponse &&
+                     (defectTypeResponse.message?.includes("No defects found for this project") ||
+                      defectTypeResponse.message?.includes("No data found") ||
+                      (defectTypeResponse.data && Array.isArray(defectTypeResponse.data.defectTypes) && defectTypeResponse.data.defectTypes.length === 0))) {
+            setDefectTypeData("INVALID_DATA");
+            console.log('ℹ️ No defects found for this project');
+          } else {
+            setDefectTypeData(null);
+            console.log('ℹ️ No defect type data available for this project');
+          }
+        } catch (defectTypeError) {
+          console.error('Error fetching Defect Type:', defectTypeError);
+          console.log('🔄 Keeping default Defect Type data');
+          setDefectTypeData(null);
         }
 
       } catch (error) {
@@ -716,58 +753,109 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           <View style={styles.chartCard}>
             <Text style={styles.chartTitle}>Defect Distribution by Type</Text>
 
-            {/* Multi-Color Pie Chart */}
-            <View style={styles.multiPieChartContainer}>
-              <View style={styles.fourColorPieChart}>
-                {/* Blue section (Functionality - 52.8%) - Largest */}
-                <View style={styles.functionalityPie} />
-
-                {/* Red section (Validation - 22.4%) - Second largest */}
-                <View style={styles.validationPie} />
-
-                {/* Green section (UI - 18.1%) - Third */}
-                <View style={styles.uiPie} />
-
-                {/* Yellow section (Usability - 6.7%) - Smallest */}
-                <View style={styles.usabilityPie} />
+            {/* Check if API returned "No defects found" or "No data found" */}
+            {defectTypeData === "INVALID_DATA" ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>Invalid defect type data</Text>
               </View>
-            </View>
-
-            {/* Legend */}
-            <View style={styles.multiPieChartLegend}>
-              <View style={styles.legendRow}>
-                <View style={styles.multiLegendItem}>
-                  <View style={[styles.multiLegendDot, { backgroundColor: '#3b82f6' }]} />
-                  <Text style={styles.multiLegendText}>Functionality: 236 (52.8%)</Text>
+            ) : defectTypeData === "NO_DATA" ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>No data available.</Text>
+              </View>
+            ) : (
+              <>
+                {/* Dynamic Multi-Color Pie Chart */}
+                <View style={styles.multiPieChartContainer}>
+                  <DynamicPieChart
+                    data={defectTypeData && defectTypeData.defectTypes ? defectTypeData.defectTypes : []}
+                    size={140}
+                    strokeWidth={2}
+                  />
                 </View>
-                <View style={styles.multiLegendItem}>
-                  <View style={[styles.multiLegendDot, { backgroundColor: '#ef4444' }]} />
-                  <Text style={styles.multiLegendText}>Validation: 100 (22.4%)</Text>
-                </View>
-              </View>
-              <View style={styles.legendRow}>
-                <View style={styles.multiLegendItem}>
-                  <View style={[styles.multiLegendDot, { backgroundColor: '#10b981' }]} />
-                  <Text style={styles.multiLegendText}>UI: 81 (18.1%)</Text>
-                </View>
-                <View style={styles.multiLegendItem}>
-                  <View style={[styles.multiLegendDot, { backgroundColor: '#f59e0b' }]} />
-                  <Text style={styles.multiLegendText}>Usability: 30 (6.7%)</Text>
-                </View>
-              </View>
-            </View>
 
-            {/* Summary Stats */}
-            <View style={styles.summaryStats}>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>447</Text>
-                <Text style={styles.summaryLabel}>Total Defects</Text>
+                {/* Dynamic Legend */}
+                <View style={styles.multiPieChartLegend}>
+                  {defectTypeData && defectTypeData.defectTypes && Array.isArray(defectTypeData.defectTypes) && defectTypeData.defectTypes.length > 0 ? (
+                    // Dynamic legend from API data with matching colors
+                    (() => {
+                      const getColor = (index: number): string => {
+                        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#f97316', '#06b6d4', '#84cc16', '#ec4899', '#6b7280'];
+                        return colors[index % colors.length];
+                      };
+
+                      const renderLegendRows = () => {
+                        const rows = [];
+                        for (let i = 0; i < defectTypeData.defectTypes.length; i += 2) {
+                          const rowItems = defectTypeData.defectTypes.slice(i, i + 2);
+                          rows.push(
+                            <View key={i} style={styles.legendRow}>
+                              {rowItems.map((item: any, rowIndex: number) => (
+                                <View key={i + rowIndex} style={styles.multiLegendItem}>
+                                  <View style={[
+                                    styles.multiLegendDot,
+                                    { backgroundColor: getColor(i + rowIndex) }
+                                  ]} />
+                                  <Text style={styles.multiLegendText}>
+                                    {item.defectType}: {item.defectCount} ({item.percentage.toFixed(1)}%)
+                                  </Text>
+                                </View>
+                              ))}
+                            </View>
+                          );
+                        }
+                        return rows;
+                      };
+
+                      return renderLegendRows();
+                    })()
+                  ) : (
+                    // Default legend
+                    <>
+                      <View style={styles.legendRow}>
+                        <View style={styles.multiLegendItem}>
+                          <View style={[styles.multiLegendDot, { backgroundColor: '#3b82f6' }]} />
+                          <Text style={styles.multiLegendText}>Functionality: 236 (52.8%)</Text>
+                        </View>
+                        <View style={styles.multiLegendItem}>
+                          <View style={[styles.multiLegendDot, { backgroundColor: '#ef4444' }]} />
+                          <Text style={styles.multiLegendText}>Validation: 100 (22.4%)</Text>
+                        </View>
+                      </View>
+                      <View style={styles.legendRow}>
+                        <View style={styles.multiLegendItem}>
+                          <View style={[styles.multiLegendDot, { backgroundColor: '#10b981' }]} />
+                          <Text style={styles.multiLegendText}>UI: 81 (18.1%)</Text>
+                        </View>
+                        <View style={styles.multiLegendItem}>
+                          <View style={[styles.multiLegendDot, { backgroundColor: '#f59e0b' }]} />
+                          <Text style={styles.multiLegendText}>Usability: 30 (6.7%)</Text>
+                        </View>
+                      </View>
+                    </>
+                  )}
+                </View>
+              </>
+            )}
+
+            {/* Summary Stats - Only show when data is valid */}
+            {defectTypeData !== "INVALID_DATA" && (
+              <View style={styles.summaryStats}>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryNumber}>
+                    {defectTypeData && defectTypeData.totalDefectCount ? defectTypeData.totalDefectCount : 447}
+                  </Text>
+                  <Text style={styles.summaryLabel}>Total Defects</Text>
+                </View>
+                <View style={styles.summaryItem}>
+                  <Text style={styles.summaryNumber}>
+                    {defectTypeData && defectTypeData.mostCommonDefectCount ? defectTypeData.mostCommonDefectCount : 236}
+                  </Text>
+                  <Text style={styles.summaryLabel}>
+                    Most Common: {defectTypeData && defectTypeData.mostCommonDefectType ? defectTypeData.mostCommonDefectType : 'Functionality'}
+                  </Text>
+                </View>
               </View>
-              <View style={styles.summaryItem}>
-                <Text style={styles.summaryNumber}>236</Text>
-                <Text style={styles.summaryLabel}>Most Common: Functionality</Text>
-              </View>
-            </View>
+            )}
           </View>
         </View>
 

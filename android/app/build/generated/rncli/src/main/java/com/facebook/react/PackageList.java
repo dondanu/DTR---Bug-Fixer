@@ -17,6 +17,8 @@ import com.reactnativecommunity.asyncstorage.AsyncStoragePackage;
 import com.BV.LinearGradient.LinearGradientPackage;
 // react-native-safe-area-context
 import com.th3rdwave.safeareacontext.SafeAreaContextPackage;
+// react-native-svg
+import com.horcrux.svg.SvgPackage;
 // react-native-touch-id
 import com.rnfingerprint.FingerprintAuthPackage;
 // react-native-vector-icons
@@ -69,6 +71,7 @@ public class PackageList {
       new AsyncStoragePackage(),
       new LinearGradientPackage(),
       new SafeAreaContextPackage(),
+      new SvgPackage(),
       new FingerprintAuthPackage(),
       new VectorIconsPackage()
     ));
