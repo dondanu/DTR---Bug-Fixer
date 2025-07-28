@@ -1,8 +1,11 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import DashboardScreen from './src/components/DashboardScreen';
 import Profile from './src/components/Profile';
 import LoginScreen from './src/components/LoginScreen';
 import ProjectDetailScreen from './src/components/ProjectDetailScreen';
+
+// Suppress React Native error screens for API errors
+import { LogBox } from 'react-native';
 
 type Screen = 'dashboard' | 'profile' | 'project';
 
@@ -11,6 +14,17 @@ const App: React.FC = () => {
   const [userEmail, setUserEmail] = useState('');
   const [currentScreen, setCurrentScreen] = useState<Screen>('dashboard');
   const [selectedProject, setSelectedProject] = useState<{id: number, name: string} | null>(null);
+
+  // Suppress specific error warnings in development
+  useEffect(() => {
+    // Ignore specific warnings that we handle gracefully
+    LogBox.ignoreLogs([
+      'Error fetching Remark Ratio',
+      'AxiosError: Request failed with status code 404',
+      'Network Error',
+      'timeout'
+    ]);
+  }, []);
 
   // Handle login
   const handleLogin = (email: string, password: string) => {

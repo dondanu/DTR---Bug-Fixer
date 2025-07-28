@@ -46,6 +46,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const [severitySummary, setSeveritySummary] = useState<any>(null);
   const [reopenCountData, setReopenCountData] = useState<any>(null);
   const [defectTypeData, setDefectTypeData] = useState<any>(null);
+  const [remarkRatioError, setRemarkRatioError] = useState<boolean>(false);
 
   // Debug: Log whenever severitySummary changes
   useEffect(() => {
@@ -84,6 +85,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
     const fetchProjectData = async () => {
       try {
         setLoading(true);
+        setRemarkRatioError(false); // Reset error state
 
         // API Call 1: Fetch defect statistics for selected project
         const defectStatsUrl = `http://34.56.162.48:8087/api/v1/defect-statistics/${selectedProjectTab}`;
@@ -264,6 +266,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               remarkCategory: remarkRatioData.data.category || 'Medium',
               remarkColor: remarkRatioData.data.color || 'green'
             }));
+            setRemarkRatioError(false); // Clear any previous error
             console.log('✅ Remark Ratio updated to:', ratioNumber + '%');
             console.log('✅ Remark Category updated to:', remarkRatioData.data.category);
             console.log('✅ Remark Color updated to:', remarkRatioData.data.color);
@@ -272,9 +275,12 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
             console.log('Expected ratio, category, and color fields, got:', remarkRatioData?.data);
             console.log('Available fields in response:', remarkRatioData?.data ? Object.keys(remarkRatioData.data) : 'No data object');
           }
-        } catch (remarkRatioError) {
+        } catch (remarkRatioError: any) {
+          // Silently handle the error - only log to console, don't show error screen
           console.error('Error fetching Remark Ratio:', remarkRatioError);
+          setRemarkRatioError(true); // Set error state
           console.log('🔄 Keeping default Remark Ratio value');
+          // Don't re-throw the error to prevent frontend error screen
         }
 
         // API Call 6: Fetch reopen count summary
@@ -666,23 +672,29 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           {/* Defect to Remark Ratio */}
           <View style={styles.statCardFullWidth}>
             <Text style={styles.statCardTitle}>Defect to Remark Ratio</Text>
-            <View style={styles.remarkRatioContainer}>
-              <Text style={styles.remarkRatioValue}>{defectStats.remarkRatio}%</Text>
-              <Text style={styles.remarkRatioSubtext}>Defect Remark Ratio (%)</Text>
-              <View style={[
-                styles.remarkRatioBadge,
-                {
-                  backgroundColor:
-                    defectStats.remarkColor === 'green' ? '#10b981' :
-                    defectStats.remarkColor === 'yellow' ? '#fbbf24' :
-                    defectStats.remarkColor === 'blue' ? '#2563eb' :
-                    defectStats.remarkColor === 'red' ? '#dc2626' :
-                    '#10b981' // Default green
-                }
-              ]}>
-                <Text style={styles.remarkRatioBadgeText}>{defectStats.remarkCategory}</Text>
+            {remarkRatioError ? (
+              <View style={styles.noDataContainer}>
+                <Text style={styles.noDataText}>Failed to load defect to remark ratio</Text>
               </View>
-            </View>
+            ) : (
+              <View style={styles.remarkRatioContainer}>
+                <Text style={styles.remarkRatioValue}>{defectStats.remarkRatio}%</Text>
+                <Text style={styles.remarkRatioSubtext}>Defect Remark Ratio (%)</Text>
+                <View style={[
+                  styles.remarkRatioBadge,
+                  {
+                    backgroundColor:
+                      defectStats.remarkColor === 'green' ? '#10b981' :
+                      defectStats.remarkColor === 'yellow' ? '#fbbf24' :
+                      defectStats.remarkColor === 'blue' ? '#2563eb' :
+                      defectStats.remarkColor === 'red' ? '#dc2626' :
+                      '#10b981' // Default green
+                  }
+                ]}>
+                  <Text style={styles.remarkRatioBadgeText}>{defectStats.remarkCategory}</Text>
+                </View>
+              </View>
+            )}
           </View>
         </View>
 
@@ -698,48 +710,67 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               </View>
             ) : (
               <>
-                {/* Pie Chart */}
+                {/* Dynamic Pie Chart */}
                 <View style={styles.pieChartContainer}>
-                  {reopenCountData && Array.isArray(reopenCountData) && reopenCountData.length >= 2 ? (
-                    <View style={styles.dynamicPieChart}>
-                      {/* Blue segment (first item - larger percentage) */}
-                      <View style={[
-                        styles.pieChartSegment,
-                        { backgroundColor: '#3b82f6' }
-                      ]} />
-                      {/* Yellow segment (second item - smaller percentage) */}
-                      <View style={[
-                        styles.yellowSegmentDynamic,
-                        {
-                          // Calculate rotation based on the second item's percentage
-                          // For 14.3%, we need a small wedge
-                          transform: [{
-                            rotate: `${reopenCountData[1]?.percentage <= 20 ?
-                              -((reopenCountData[1]?.percentage || 0) * 18) : // Small wedge for small percentages
-                              -((reopenCountData[1]?.percentage || 0) * 3.6)}deg` // Standard calculation for larger percentages
-                          }],
-                        }
-                      ]} />
-                    </View>
-                  ) : (
-                    <View style={styles.exactPieChart}>
-                      {/* Default pie chart */}
-                      <View style={styles.blueSection80} />
-                      <View style={styles.yellowSection20} />
-                    </View>
-                  )}
+                  <DynamicPieChart
+                    data={reopenCountData && Array.isArray(reopenCountData) ?
+                      (() => {
+                        // Calculate total for percentages
+                        const total = reopenCountData.reduce((sum, item) => sum + item.count, 0);
+
+                        return reopenCountData.map(item => ({
+                          defectType: item.label || `${item.reopenCount} times`,
+                          defectCount: item.count,
+                          percentage: total > 0 ? ((item.count / total) * 100) : 0
+                        }));
+                      })() : []
+                    }
+                    size={140}
+                    strokeWidth={2}
+                  />
                 </View>
 
-                {/* Legend - ALWAYS Shows percentage data */}
+                {/* Dynamic Legend */}
                 <View style={styles.pieChartLegend}>
-                  <View style={styles.pieChartLegendItem}>
-                    <View style={[styles.pieChartLegendDot, { backgroundColor: '#3b82f6' }]} />
-                    <Text style={styles.pieChartLegendText}>2 times: 8 (88.9%)</Text>
-                  </View>
-                  <View style={styles.pieChartLegendItem}>
-                    <View style={[styles.pieChartLegendDot, { backgroundColor: '#fbbf24' }]} />
-                    <Text style={styles.pieChartLegendText}>4 times: 1 (11.1%)</Text>
-                  </View>
+                  {reopenCountData && Array.isArray(reopenCountData) && reopenCountData.length > 0 ? (
+                    // Dynamic legend from API data with matching colors
+                    (() => {
+                      const getColor = (index: number): string => {
+                        const colors = ['#3b82f6', '#ef4444', '#10b981', '#f59e0b', '#8b5cf6', '#f97316', '#06b6d4', '#84cc16', '#ec4899', '#6b7280'];
+                        return colors[index % colors.length];
+                      };
+
+                      // Calculate total for percentages
+                      const total = reopenCountData.reduce((sum: number, item: any) => sum + item.count, 0);
+
+                      return reopenCountData.map((item: any, index: number) => {
+                        const percentage = total > 0 ? ((item.count / total) * 100).toFixed(1) : '0.0';
+                        return (
+                          <View key={index} style={styles.pieChartLegendItem}>
+                            <View style={[
+                              styles.pieChartLegendDot,
+                              { backgroundColor: getColor(index) }
+                            ]} />
+                            <Text style={styles.pieChartLegendText}>
+                              {item.label || `${item.reopenCount} times`}: {item.count} ({percentage}%)
+                            </Text>
+                          </View>
+                        );
+                      });
+                    })()
+                  ) : (
+                    // Fallback legend
+                    <>
+                      <View style={styles.pieChartLegendItem}>
+                        <View style={[styles.pieChartLegendDot, { backgroundColor: '#3b82f6' }]} />
+                        <Text style={styles.pieChartLegendText}>2 times: 8 (88.9%)</Text>
+                      </View>
+                      <View style={styles.pieChartLegendItem}>
+                        <View style={[styles.pieChartLegendDot, { backgroundColor: '#ef4444' }]} />
+                        <Text style={styles.pieChartLegendText}>4 times: 1 (11.1%)</Text>
+                      </View>
+                    </>
+                  )}
                 </View>
               </>
             )}
