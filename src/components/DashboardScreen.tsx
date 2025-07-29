@@ -69,6 +69,7 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
               return r.json();
             })
             .then(colorRes => {
+              console.log(`🎨 Project Card Color API Response for project ${project.id}:`, JSON.stringify(colorRes, null, 2));
               setCardColors(prev => ({
                 ...prev,
                 [project.id]: parseColorString(colorRes.data.projectCardColor)

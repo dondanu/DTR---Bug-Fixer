@@ -12,6 +12,7 @@ import { getDefectsByModule } from '../api/defectbymodule';
 import { getDefectDensity } from '../api/defectdensity';
 import GaugeChart from './GaugeChart';
 import DynamicPieChart from './DynamicPieChart';
+import SeverityPieChart from './SeverityPieChart';
 
 const screenWidth = Dimensions.get('window').width;
 
@@ -52,6 +53,9 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const [defectsByModuleData, setDefectsByModuleData] = useState<any>(null);
   const [defectsByModuleError, setDefectsByModuleError] = useState<boolean>(false);
   const [remarkRatioError, setRemarkRatioError] = useState<boolean>(false);
+  const [selectedSeverityChart, setSelectedSeverityChart] = useState<'high' | 'medium' | 'low' | null>(null);
+  const [projectRiskLevel, setProjectRiskLevel] = useState<string>('Medium Risk');
+  const [projectCardData, setProjectCardData] = useState<{ [projectId: number]: any }>({});
 
   // Debug: Log whenever severitySummary changes
   useEffect(() => {
@@ -76,7 +80,36 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         const response = await fetch(projectsUrl);
         console.log('Status Code:', response.status);
         const data = await response.json();
+        console.log('🔍 PROJECTS API RESPONSE:', JSON.stringify(data, null, 2));
+        if (data.data && data.data.length > 0) {
+          console.log('🔍 FIRST PROJECT FIELDS:', Object.keys(data.data[0]));
+          console.log('🔍 FIRST PROJECT DATA:', JSON.stringify(data.data[0], null, 2));
+        }
         setAllProjects(data.data || []);
+
+        // Fetch project card colors for all projects
+        (data.data || []).forEach((project: any) => {
+          const colorUrl = `http://34.56.162.48:8087/api/v1/dashboard/project-card-color/${project.id}`;
+          console.log(`🎨 Fetching card color for project ${project.id}: ${project.projectName}`);
+
+          fetch(colorUrl)
+            .then(r => {
+              console.log(`🎨 Card Color Status Code for project ${project.id}:`, r.status);
+              return r.json();
+            })
+            .then(colorRes => {
+              console.log(`🎨 Project Card Color API Response for project ${project.id}:`, JSON.stringify(colorRes, null, 2));
+              if (colorRes.data) {
+                setProjectCardData(prev => ({
+                  ...prev,
+                  [project.id]: colorRes.data
+                }));
+              }
+            })
+            .catch(err => {
+              console.log(`❌ Error fetching card color for project ${project.id}:`, err);
+            });
+        });
       } catch (error) {
         console.error('Error fetching projects:', error);
       }
@@ -241,12 +274,19 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
               severityIndex: dsiData.data.dsiPercentage
             }));
             console.log('✅ DSI Percentage updated to:', dsiData.data.dsiPercentage + '%');
+
+            // Update project risk level from backend interpretation
+            if (dsiData.data.interpretation) {
+              setProjectRiskLevel(dsiData.data.interpretation);
+              console.log('✅ Project Risk Level updated to:', dsiData.data.interpretation);
+            }
           } else if (dsiData && dsiData.data === 0) {
             // Handle case where API returns "data": 0
             setDefectStats(prevStats => ({
               ...prevStats,
               severityIndex: 0
             }));
+            setProjectRiskLevel('Low Risk'); // Default for 0 DSI
             console.log('✅ DSI Percentage set to 0 (no valid defects found)');
           } else {
             console.log('⚠️ DSI data not in expected format:', dsiData);
@@ -440,6 +480,60 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
     fetchProjectData();
   }, [selectedProjectTab]);
 
+  // Helper functions for dynamic project info
+  const getProjectRiskFromCardAPI = (projectId: number): 'high' | 'medium' | 'low' => {
+    const cardData = projectCardData[projectId];
+    console.log(`🎯 Getting risk for project ${projectId}, card data:`, cardData);
+
+    if (!cardData || !cardData.availableRiskLevels || cardData.availableRiskLevels.length === 0) {
+      console.log(`⚠️ No card data found for project ${projectId}, defaulting to medium risk`);
+      return 'medium';
+    }
+
+    // Get the highest risk level from availableRiskLevels
+    const riskLevels = cardData.availableRiskLevels;
+    console.log(`🎯 Available risk levels for project ${projectId}:`, riskLevels);
+
+    if (riskLevels.includes('High')) {
+      return 'high';
+    } else if (riskLevels.includes('Medium')) {
+      return 'medium';
+    } else if (riskLevels.includes('Low')) {
+      return 'low';
+    } else {
+      return 'medium'; // Default fallback
+    }
+  };
+
+  const getRiskLevel = () => {
+    // Get risk from project card API data
+    const risk = getProjectRiskFromCardAPI(selectedProjectTab);
+    console.log(`🎯 Risk level for project ${selectedProjectTab}:`, risk);
+
+    switch (risk) {
+      case 'high': return 'High Risk';
+      case 'low': return 'Low Risk';
+      case 'medium': return 'Medium Risk';
+      default: return 'Medium Risk';
+    }
+  };
+
+  const getRiskColor = () => {
+    // Determine color based on project card API risk
+    const risk = getProjectRiskFromCardAPI(selectedProjectTab);
+
+    switch (risk) {
+      case 'high': return '#dc2626'; // Red for High Risk
+      case 'low': return '#10b981'; // Green for Low Risk
+      case 'medium': return '#f59e0b'; // Yellow for Medium Risk
+      default: return '#f59e0b'; // Default yellow
+    }
+  };
+
+  const getSelectedProjectName = () => {
+    return allProjects.find(p => p.id === selectedProjectTab)?.projectName || 'Project';
+  };
+
   return (
     <SafeAreaView style={styles.safeArea}>
       <Header onLogoutPress={onLogoutPress} />
@@ -477,11 +571,14 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
           </ScrollView>
         </View>
 
-        {/* Defect Tracker Header */}
+        {/* Dynamic Project Header */}
         <View style={styles.defectTrackerHeader}>
-          <Text style={styles.defectTrackerTitle}>Defect Tracker</Text>
-          <View style={styles.statusBadge}>
-            <Text style={styles.statusBadgeText}>High Risk</Text>
+          <Text style={styles.defectTrackerTitle}>{getSelectedProjectName()}</Text>
+          <View style={[
+            styles.statusBadge,
+            { backgroundColor: getRiskColor() }
+          ]}>
+            <Text style={styles.statusBadgeText}>{getRiskLevel()}</Text>
           </View>
         </View>
 
@@ -520,10 +617,7 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
             {/* API Integration - Show loading or data */}
             {severitySummary ? (
               <>
-                {console.log('🎯 RENDERING WITH SEVERITY SUMMARY:', severitySummary)}
-                {console.log('🎯 LOW DATA IN RENDER:', severitySummary.low)}
-                {console.log('🎯 MEDIUM DATA IN RENDER:', severitySummary.medium)}
-                {console.log('🎯 HIGH DATA IN RENDER:', severitySummary.high)}
+                {/* Debug logs moved to useEffect */}
 
                 {/* Top Row: Low (left) and Medium (right) */}
                 <View style={styles.topRowContainer}>
@@ -553,8 +647,13 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
                         <Text style={styles.statText}>DUPLICATE: {severitySummary.low?.statuses?.DUPLICATE?.count || 0}</Text>
                       </View>
                     </View>
-                <TouchableOpacity style={styles.viewChartButton}>
-                  <Text style={styles.viewChartText}>View Chart</Text>
+                <TouchableOpacity
+                  style={styles.viewChartButton}
+                  onPress={() => setSelectedSeverityChart(selectedSeverityChart === 'low' ? null : 'low')}
+                >
+                  <Text style={styles.viewChartText}>
+                    {selectedSeverityChart === 'low' ? 'Hide Chart' : 'View Chart'}
+                  </Text>
                 </TouchableOpacity>
               </View>
 
@@ -584,8 +683,13 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
                         <Text style={styles.statText}>DUPLICATE: {severitySummary.medium?.statuses?.DUPLICATE?.count || 0}</Text>
                       </View>
                     </View>
-                <TouchableOpacity style={styles.viewChartButton}>
-                  <Text style={styles.viewChartText}>View Chart</Text>
+                <TouchableOpacity
+                  style={styles.viewChartButton}
+                  onPress={() => setSelectedSeverityChart(selectedSeverityChart === 'medium' ? null : 'medium')}
+                >
+                  <Text style={styles.viewChartText}>
+                    {selectedSeverityChart === 'medium' ? 'Hide Chart' : 'View Chart'}
+                  </Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -627,8 +731,13 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
                       </View>
                     </View>
 
-                    <TouchableOpacity style={styles.viewChartButton}>
-                      <Text style={styles.viewChartText}>View Chart</Text>
+                    <TouchableOpacity
+                      style={styles.viewChartButton}
+                      onPress={() => setSelectedSeverityChart(selectedSeverityChart === 'high' ? null : 'high')}
+                    >
+                      <Text style={styles.viewChartText}>
+                        {selectedSeverityChart === 'high' ? 'Hide Chart' : 'View Chart'}
+                      </Text>
                     </TouchableOpacity>
                   </View>
                 </View>
@@ -636,6 +745,17 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
             ) : (
               <Text style={styles.severityText}>Loading severity data...</Text>
             )}
+          </View>
+        )}
+
+        {/* Severity Pie Chart - Show when a severity level is selected */}
+        {selectedSeverityChart && severitySummary && severitySummary[selectedSeverityChart] && (
+          <View style={styles.severityChartContainer}>
+            <SeverityPieChart
+              data={severitySummary[selectedSeverityChart]}
+              severityLevel={selectedSeverityChart}
+              size={220}
+            />
           </View>
         )}
 
@@ -1257,6 +1377,14 @@ const styles = StyleSheet.create({
   },
   viewChartText: { fontSize: 12, color: '#3b82f6', fontWeight: '600' },
 
+  // Severity Chart Container
+  severityChartContainer: {
+    marginVertical: 16,
+    backgroundColor: '#f8f9fa',
+    borderRadius: 12,
+    padding: 8,
+  },
+
   // Stats Rows
   statsTopRow: {
     flexDirection: 'row',
@@ -1699,10 +1827,6 @@ const styles = StyleSheet.create({
   },
 
   // Pie Chart Styles
-  pieChartContainer: {
-    alignItems: 'center',
-    marginVertical: 16,
-  },
   exactPieChart: {
     width: 120,
     height: 120,
