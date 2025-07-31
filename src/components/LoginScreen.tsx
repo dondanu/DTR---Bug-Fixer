@@ -157,7 +157,7 @@ const LoginScreen: React.FC<LoginProps> = ({ onLogin }) => {
       console.log('Attempting biometric login, type:', biometryType);
 
       if (biometryType) {
-        const result = await TouchID.authenticate('Use your fingerprint to login to DefectTracker', {
+        const result = await TouchID.authenticate('Use your fingerprint to login to SGIG Defect Tracker', {
           title: 'Biometric Authentication',
           fallbackLabel: 'Use Password',
         });

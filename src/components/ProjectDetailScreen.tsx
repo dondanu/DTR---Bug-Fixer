@@ -57,14 +57,9 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const [projectRiskLevel, setProjectRiskLevel] = useState<string>('Medium Risk');
   const [projectCardData, setProjectCardData] = useState<{ [projectId: number]: any }>({});
 
-  // Debug: Log whenever severitySummary changes
+  // Keep this useEffect to maintain hook order (but without console logs)
   useEffect(() => {
-    console.log('🔄 SEVERITY SUMMARY STATE CHANGED:', severitySummary);
-    if (severitySummary) {
-      console.log('🔄 LOW DATA IN STATE:', severitySummary.low);
-      console.log('🔄 MEDIUM DATA IN STATE:', severitySummary.medium);
-      console.log('🔄 HIGH DATA IN STATE:', severitySummary.high);
-    }
+    // Silently monitor severity summary changes
   }, [severitySummary]);
 
   useEffect(() => {
@@ -72,33 +67,22 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
     const fetchAllProjects = async () => {
       try {
         const projectsUrl = 'http://34.56.162.48:8087/api/v1/projects';
-        console.log('🔥 API Request Details:');
-        console.log('Request URL:', projectsUrl);
-        console.log('Request Method: GET');
-        console.log('Referrer Policy: strict-origin-when-cross-origin');
-
         const response = await fetch(projectsUrl);
-        console.log('Status Code:', response.status);
         const data = await response.json();
-        console.log('🔍 PROJECTS API RESPONSE:', JSON.stringify(data, null, 2));
-        if (data.data && data.data.length > 0) {
-          console.log('🔍 FIRST PROJECT FIELDS:', Object.keys(data.data[0]));
-          console.log('🔍 FIRST PROJECT DATA:', JSON.stringify(data.data[0], null, 2));
-        }
         setAllProjects(data.data || []);
 
         // Fetch project card colors for all projects
         (data.data || []).forEach((project: any) => {
           const colorUrl = `http://34.56.162.48:8087/api/v1/dashboard/project-card-color/${project.id}`;
-          console.log(`🎨 Fetching card color for project ${project.id}: ${project.projectName}`);
+
 
           fetch(colorUrl)
             .then(r => {
-              console.log(`🎨 Card Color Status Code for project ${project.id}:`, r.status);
+
               return r.json();
             })
             .then(colorRes => {
-              console.log(`🎨 Project Card Color API Response for project ${project.id}:`, JSON.stringify(colorRes, null, 2));
+
               if (colorRes.data) {
                 setProjectCardData(prev => ({
                   ...prev,
@@ -106,12 +90,12 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
                 }));
               }
             })
-            .catch(err => {
-              console.log(`❌ Error fetching card color for project ${project.id}:`, err);
+            .catch(() => {
+              // Silently handle error
             });
         });
       } catch (error) {
-        console.error('Error fetching projects:', error);
+        // Silently handle error
       }
     };
 
@@ -126,51 +110,59 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
         setRemarkRatioError(false); // Reset error state
         setDefectsByModuleError(false); // Reset error state
 
-        // API Call 1: Fetch defect statistics for selected project
-        const defectStatsUrl = `http://34.56.162.48:8087/api/v1/defect-statistics/${selectedProjectTab}`;
-        console.log('📊 API Request Details:');
-        console.log('Request URL:', defectStatsUrl);
-        console.log('Request Method: GET');
-        console.log('Referrer Policy: strict-origin-when-cross-origin');
+        // 🚀 OPTIMIZED: Run all API calls in parallel using Promise.all for MUCH faster performance
 
-        const statsResponse = await fetch(defectStatsUrl);
-        console.log('Status Code:', statsResponse.status);
+        const [
+          statsResponse,
+          defectsResponse,
+          severityResponse,
+          dsiData,
+          defectDensityData,
+          remarkRatioData,
+          reopenData,
+          defectTypeResponse,
+          defectsByModuleResponse
+        ] = await Promise.all([
+          // API Call 1: Fetch defect statistics
+          fetch(`http://34.56.162.48:8087/api/v1/defect-statistics/${selectedProjectTab}`),
+          // API Call 2: Fetch defects for this project
+          fetch(`http://34.56.162.48:8087/api/v1/defects/project/${selectedProjectTab}`),
+          // API Call 3: Fetch defect severity summary
+          fetch(`http://34.56.162.48:8087/api/v1/dashboard/defect_severity_summary/${selectedProjectTab}`),
+          // API Call 4: Fetch defect severity index
+          getDefectSeverityIndex(selectedProjectTab).catch(err => ({ error: err })),
+          // API Call 5: Fetch defect density
+          getDefectDensity(selectedProjectTab).catch(err => ({ error: err })),
+          // API Call 6: Fetch defect to remark ratio
+          getDefectRemarkRatioByProjectId(selectedProjectTab).catch(err => ({ error: err })),
+          // API Call 7: Fetch reopen count summary
+          getReopenCountSummary(selectedProjectTab).catch(err => ({ error: err })),
+          // API Call 8: Fetch defect distribution by type
+          getDefectTypeByProjectId(selectedProjectTab).catch(err => ({ error: err })),
+          // API Call 9: Fetch defects by module
+          getDefectsByModule(selectedProjectTab).catch(err => ({ error: err }))
+        ]);
 
-        if (statsResponse.ok) {
-          const statsData = await statsResponse.json();
+        // 🚀 CRITICAL FIX: Parse all JSON responses in parallel too!
+        const [statsData, defectsData, severityData] = await Promise.all([
+          statsResponse.ok ? statsResponse.json() : Promise.resolve(null),
+          defectsResponse.json(),
+          severityResponse.ok ? severityResponse.json() : Promise.resolve(null)
+        ]);
+
+
+
+        // Process API Call 1: Defect statistics
+        if (statsData) {
           setDefectStats(statsData.data || defectStats);
         }
 
-        // API Call 2: Fetch defects for this project
-        const defectsUrl = `http://34.56.162.48:8087/api/v1/defects/project/${selectedProjectTab}`;
-        console.log('🐛 API Request Details:');
-        console.log('Request URL:', defectsUrl);
-        console.log('Request Method: GET');
-        console.log('Referrer Policy: strict-origin-when-cross-origin');
-
-        const defectsResponse = await fetch(defectsUrl);
-        console.log('Status Code:', defectsResponse.status);
-        const defectsData = await defectsResponse.json();
+        // Process API Call 2: Defects data
         setDefects(defectsData.data || []);
 
-        // API Call 3: Fetch defect severity summary
-        const severitySummaryUrl = `http://34.56.162.48:8087/api/v1/dashboard/defect_severity_summary/${selectedProjectTab}`;
-        console.log('📊 API Request Details:');
-        console.log('Request URL:', severitySummaryUrl);
-        console.log('Request Method: GET');
-        console.log('Referrer Policy: strict-origin-when-cross-origin');
+        // Process API Call 3: Defect severity summary
+        if (severityData && severityData.data?.defectSummary) {
 
-        const severityResponse = await fetch(severitySummaryUrl);
-        console.log('Status Code:', severityResponse.status);
-
-        if (severityResponse.ok) {
-          const severityData = await severityResponse.json();
-          console.log('🔍 === COMPLETE API RESPONSE ===');
-          console.log('Full Response:', JSON.stringify(severityData, null, 2));
-          console.log('🔍 === DEFECT SUMMARY ANALYSIS ===');
-          console.log('Defect Summary Array Length:', severityData.data?.defectSummary?.length);
-          console.log('Total Defects:', severityData.data?.totalDefects);
-          console.log('Project Name:', severityData.data?.projectName);
 
           // Transform the API response to match our component structure
           if (severityData.data?.defectSummary) {
@@ -182,296 +174,147 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
             };
 
             // Process each severity level from the API response
-            severityData.data.defectSummary.forEach((severityItem: any, index: number) => {
-              console.log(`=== SEVERITY ITEM ${index + 1} ===`);
-              console.log('Full severity item:', JSON.stringify(severityItem, null, 2));
-              console.log('Severity level:', severityItem.severity);
-              console.log('All available properties:', Object.keys(severityItem));
-
-              // Log all defect status names and values
-              Object.keys(severityItem).forEach(key => {
-                if (key !== 'severity') {
-                  console.log(`${key}:`, severityItem[key]);
-                }
-              });
-              console.log('=== END SEVERITY ITEM ===');
+            severityData.data.defectSummary.forEach((severityItem: any) => {
 
               const severityLevel = severityItem.severity?.toLowerCase();
 
               if (severityLevel === 'high') {
-                console.log('🔴 TRANSFORMING HIGH SEVERITY DATA:');
-                console.log('total:', severityItem.total);
-
                 // Let's use ALL available fields from API instead of hardcoded ones
                 const highData: any = { total: severityItem.total || 0 };
                 Object.keys(severityItem).forEach(key => {
                   if (key !== 'severity' && key !== 'total') {
                     highData[key] = severityItem[key] || 0;
-                    console.log(`HIGH ${key}:`, severityItem[key]);
                   }
                 });
-
                 transformedData.high = highData;
-                console.log('🔴 HIGH DATA AFTER TRANSFORM:', transformedData.high);
 
               } else if (severityLevel === 'medium') {
-                console.log('🟡 TRANSFORMING MEDIUM SEVERITY DATA:');
-                console.log('total:', severityItem.total);
-
                 // Let's use ALL available fields from API instead of hardcoded ones
                 const mediumData: any = { total: severityItem.total || 0 };
                 Object.keys(severityItem).forEach(key => {
                   if (key !== 'severity' && key !== 'total') {
                     mediumData[key] = severityItem[key] || 0;
-                    console.log(`MEDIUM ${key}:`, severityItem[key]);
                   }
                 });
-
                 transformedData.medium = mediumData;
-                console.log('🟡 MEDIUM DATA AFTER TRANSFORM:', transformedData.medium);
 
               } else if (severityLevel === 'low') {
-                console.log('🟢 TRANSFORMING LOW SEVERITY DATA:');
-                console.log('total:', severityItem.total);
-
                 // Let's use ALL available fields from API instead of hardcoded ones
                 const lowData: any = { total: severityItem.total || 0 };
                 Object.keys(severityItem).forEach(key => {
                   if (key !== 'severity' && key !== 'total') {
                     lowData[key] = severityItem[key] || 0;
-                    console.log(`LOW ${key}:`, severityItem[key]);
                   }
                 });
-
                 transformedData.low = lowData;
-                console.log('🟢 LOW DATA AFTER TRANSFORM:', transformedData.low);
               }
             });
 
-            console.log('🚀 FINAL TRANSFORMED DATA:', JSON.stringify(transformedData, null, 2));
             setSeveritySummary(transformedData);
-
-            // Let's also log what we're setting
-            console.log('🎯 SETTING SEVERITY SUMMARY STATE TO:', transformedData);
           }
-        } else {
-          console.error('Failed to fetch severity summary:', severityResponse.status);
         }
 
-        // API Call 4: Fetch defect severity index
-        try {
-          console.log('📈 API Request Details:');
-          console.log('Request URL: DSI API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const dsiData = await getDefectSeverityIndex(selectedProjectTab);
-          console.log('📈 DSI API Response:', JSON.stringify(dsiData, null, 2));
-
-          // Update the defectStats with the real DSI percentage value
-          if (dsiData && dsiData.data && typeof dsiData.data.dsiPercentage === 'number') {
-            setDefectStats(prevStats => ({
-              ...prevStats,
-              severityIndex: dsiData.data.dsiPercentage
-            }));
-            console.log('✅ DSI Percentage updated to:', dsiData.data.dsiPercentage + '%');
-
-            // Update project risk level from backend interpretation
-            if (dsiData.data.interpretation) {
-              setProjectRiskLevel(dsiData.data.interpretation);
-              console.log('✅ Project Risk Level updated to:', dsiData.data.interpretation);
-            }
-          } else if (dsiData && dsiData.data === 0) {
-            // Handle case where API returns "data": 0
-            setDefectStats(prevStats => ({
-              ...prevStats,
-              severityIndex: 0
-            }));
-            setProjectRiskLevel('Low Risk'); // Default for 0 DSI
-            console.log('✅ DSI Percentage set to 0 (no valid defects found)');
-          } else {
-            console.log('⚠️ DSI data not in expected format:', dsiData);
-            console.log('Expected dsiPercentage field, got:', dsiData?.data);
-            console.log('Available fields in response:', dsiData?.data ? Object.keys(dsiData.data) : 'No data object');
+        // Process API Call 4: Defect severity index (already fetched in parallel)
+        if (dsiData && !dsiData.error && dsiData.data && typeof dsiData.data.dsiPercentage === 'number') {
+          setDefectStats(prevStats => ({
+            ...prevStats,
+            severityIndex: dsiData.data.dsiPercentage
+          }));
+          if (dsiData.data.interpretation) {
+            setProjectRiskLevel(dsiData.data.interpretation);
           }
-        } catch (dsiError) {
-          console.error('Error fetching DSI:', dsiError);
-          console.log('🔄 Keeping default DSI value');
+        } else if (dsiData && !dsiData.error && dsiData.data === 0) {
+          setDefectStats(prevStats => ({
+            ...prevStats,
+            severityIndex: 0
+          }));
+          setProjectRiskLevel('Low Risk');
+        } else if (dsiData?.error) {
+          // Silently handle error
         }
 
-        // API Call 5: Fetch defect density
-        console.log('🚀 STARTING DEFECT DENSITY API CALL');
-        try {
-          console.log('📊 API Request Details:');
-          console.log('Request URL: Defect Density API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const defectDensityData = await getDefectDensity(selectedProjectTab);
-          console.log('📊 Defect Density API Response:', JSON.stringify(defectDensityData, null, 2));
-
-          // Update the defectStats with the real defect density value
-          if (defectDensityData && defectDensityData.data && typeof defectDensityData.data.defectDensity === 'number') {
-            setDefectStats(prevStats => ({
-              ...prevStats,
-              density: defectDensityData.data.defectDensity
-            }));
-            console.log('✅ Defect Density updated to:', defectDensityData.data.defectDensity);
-          } else if (defectDensityData && defectDensityData.data === 0) {
-            // Handle case where API returns "data": 0
-            setDefectStats(prevStats => ({
-              ...prevStats,
-              density: 0
-            }));
-            console.log('✅ Defect Density set to 0 (no valid defects found)');
-          } else {
-            console.log('⚠️ Defect Density data not in expected format:', defectDensityData);
-            console.log('Expected defectDensity field, got:', defectDensityData?.data);
-            console.log('Available fields in response:', defectDensityData?.data ? Object.keys(defectDensityData.data) : 'No data object');
-          }
-        } catch (defectDensityError) {
-          console.error('Error fetching Defect Density:', defectDensityError);
-          console.log('🔄 Keeping default Defect Density value');
+        // Process API Call 5: Defect density (already fetched in parallel)
+        if (defectDensityData && !defectDensityData.error && defectDensityData.data && typeof defectDensityData.data.defectDensity === 'number') {
+          setDefectStats(prevStats => ({
+            ...prevStats,
+            density: defectDensityData.data.defectDensity
+          }));
+        } else if (defectDensityData && !defectDensityData.error && defectDensityData.data === 0) {
+          setDefectStats(prevStats => ({
+            ...prevStats,
+            density: 0
+          }));
+        } else if (defectDensityData?.error) {
+          // Silently handle error
         }
 
-        // API Call 6: Fetch defect to remark ratio
-        try {
-          console.log('📊 API Request Details:');
-          console.log('Request URL: Remark Ratio API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const remarkRatioData = await getDefectRemarkRatioByProjectId(selectedProjectTab);
-          console.log('📊 Remark Ratio API Response:', JSON.stringify(remarkRatioData, null, 2));
-
-          // Update the defectStats with the real remark ratio value
-          if (remarkRatioData && remarkRatioData.data && remarkRatioData.data.ratio) {
-            // Parse ratio string (e.g., "98.09%") to number
-            const ratioString = remarkRatioData.data.ratio;
-            const ratioNumber = parseFloat(ratioString.replace('%', ''));
-
-            setDefectStats(prevStats => ({
-              ...prevStats,
-              remarkRatio: ratioNumber,
-              remarkCategory: remarkRatioData.data.category || 'Medium',
-              remarkColor: remarkRatioData.data.color || 'green'
-            }));
-            setRemarkRatioError(false); // Clear any previous error
-            console.log('✅ Remark Ratio updated to:', ratioNumber + '%');
-            console.log('✅ Remark Category updated to:', remarkRatioData.data.category);
-            console.log('✅ Remark Color updated to:', remarkRatioData.data.color);
-          } else {
-            console.log('⚠️ Remark Ratio data not in expected format:', remarkRatioData);
-            console.log('Expected ratio, category, and color fields, got:', remarkRatioData?.data);
-            console.log('Available fields in response:', remarkRatioData?.data ? Object.keys(remarkRatioData.data) : 'No data object');
-          }
-        } catch (remarkRatioError: any) {
-          // Silently handle the error - only log to console, don't show error screen
-          console.error('Error fetching Remark Ratio:', remarkRatioError);
-          setRemarkRatioError(true); // Set error state
-          console.log('🔄 Keeping default Remark Ratio value');
-          // Don't re-throw the error to prevent frontend error screen
+        // Process API Call 6: Defect to remark ratio (already fetched in parallel)
+        if (remarkRatioData && !remarkRatioData.error && remarkRatioData.data && remarkRatioData.data.ratio) {
+          const ratioString = remarkRatioData.data.ratio;
+          const ratioNumber = parseFloat(ratioString.replace('%', ''));
+          setDefectStats(prevStats => ({
+            ...prevStats,
+            remarkRatio: ratioNumber,
+            remarkCategory: remarkRatioData.data.category || 'Medium',
+            remarkColor: remarkRatioData.data.color || 'green'
+          }));
+          setRemarkRatioError(false);
+        } else if (remarkRatioData?.error) {
+          // Silently handle error
+          setRemarkRatioError(true);
         }
 
-        // API Call 6: Fetch reopen count summary
-        try {
-          console.log('🔄 API Request Details:');
-          console.log('Request URL: Reopen Count Summary API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const reopenData = await getReopenCountSummary(selectedProjectTab);
-          console.log('🔄 Reopen Count API Response:', JSON.stringify(reopenData, null, 2));
-
-          // Update the reopenCountData with the real data
-          console.log('🔄 Reopen Count API Response:', JSON.stringify(reopenData, null, 2));
-
-          // Check if API returns "No data found" or empty data
-          if (reopenData &&
-              (reopenData.message?.includes("No data found") ||
-               (Array.isArray(reopenData.data) && reopenData.data.length === 0))) {
+        // Process API Call 7: Reopen count summary (already fetched in parallel)
+        if (reopenData && !reopenData.error) {
+          if (reopenData.message?.includes("No data found") || (Array.isArray(reopenData.data) && reopenData.data.length === 0)) {
             setReopenCountData("NO_DATA");
-            console.log('ℹ️ No reopen count data found for this project');
-          } else if (reopenData && reopenData.data && Array.isArray(reopenData.data) && reopenData.data.length > 0) {
+          } else if (reopenData.data && Array.isArray(reopenData.data) && reopenData.data.length > 0) {
             setReopenCountData(reopenData.data);
-            console.log('✅ Reopen Count Data updated with REAL API data:', reopenData.data);
           } else {
-            // Keep the default percentage display
             const defaultData = [
               { reopenCount: 2, count: 8, percentage: 88.9 },
               { reopenCount: 4, count: 1, percentage: 11.1 }
             ];
             setReopenCountData(defaultData);
-            console.log('✅ Using default percentage data:', defaultData);
           }
-        } catch (reopenError) {
-          console.error('Error fetching Reopen Count:', reopenError);
-          console.log('🔄 Keeping default Reopen Count data');
+        } else if (reopenData?.error) {
+          // Silently handle error
         }
 
-        // API Call 7: Fetch defect distribution by type
-        try {
-          console.log('📊 API Request Details:');
-          console.log('Request URL: Defect Type API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const defectTypeResponse = await getDefectTypeByProjectId(selectedProjectTab);
-          console.log('📊 Defect Type API Response:', JSON.stringify(defectTypeResponse, null, 2));
-
-          // Update the defectTypeData with the real data
-          if (defectTypeResponse && defectTypeResponse.data && defectTypeResponse.data.defectTypes && Array.isArray(defectTypeResponse.data.defectTypes) && defectTypeResponse.data.defectTypes.length > 0) {
+        // Process API Call 8: Defect distribution by type (already fetched in parallel)
+        if (defectTypeResponse && !defectTypeResponse.error && defectTypeResponse.data && defectTypeResponse.data.defectTypes && Array.isArray(defectTypeResponse.data.defectTypes)) {
+          if (defectTypeResponse.data.defectTypes.length > 0) {
             setDefectTypeData({
               defectTypes: defectTypeResponse.data.defectTypes,
               totalDefectCount: defectTypeResponse.data.totalDefectCount,
               mostCommonDefectType: defectTypeResponse.data.mostCommonDefectType,
               mostCommonDefectCount: defectTypeResponse.data.mostCommonDefectCount
             });
-            console.log('✅ Defect Type Data updated:', defectTypeResponse.data);
-          } else if (defectTypeResponse &&
-                     (defectTypeResponse.message?.includes("No defects found for this project") ||
-                      defectTypeResponse.message?.includes("No data found") ||
-                      (defectTypeResponse.data && Array.isArray(defectTypeResponse.data.defectTypes) && defectTypeResponse.data.defectTypes.length === 0))) {
-            setDefectTypeData("INVALID_DATA");
-            console.log('ℹ️ No defects found for this project');
           } else {
-            setDefectTypeData(null);
-            console.log('ℹ️ No defect type data available for this project');
+            setDefectTypeData("INVALID_DATA");
           }
-        } catch (defectTypeError) {
-          console.error('Error fetching Defect Type:', defectTypeError);
-          console.log('🔄 Keeping default Defect Type data');
+        } else {
           setDefectTypeData(null);
+          // Silently handle error
         }
 
-        // API Call 8: Fetch defects by module
-        try {
-          console.log('📊 API Request Details:');
-          console.log('Request URL: Defects by Module API for project', selectedProjectTab);
-          console.log('Request Method: GET');
-
-          const defectsByModuleResponse = await getDefectsByModule(selectedProjectTab);
-          console.log('📊 Defects by Module API Response:', JSON.stringify(defectsByModuleResponse, null, 2));
-
-          // Update the defectsByModuleData with the real data
-          if (defectsByModuleResponse && defectsByModuleResponse.data && Array.isArray(defectsByModuleResponse.data) && defectsByModuleResponse.data.length > 0) {
+        // Process API Call 9: Defects by module (already fetched in parallel)
+        if (defectsByModuleResponse && !defectsByModuleResponse.error && defectsByModuleResponse.data && Array.isArray(defectsByModuleResponse.data)) {
+          if (defectsByModuleResponse.data.length > 0) {
             setDefectsByModuleData(defectsByModuleResponse.data);
-            console.log('✅ Defects by Module Data updated:', defectsByModuleResponse.data);
-          } else if (defectsByModuleResponse &&
-                     (defectsByModuleResponse.message?.includes("No data found") ||
-                      (Array.isArray(defectsByModuleResponse.data) && defectsByModuleResponse.data.length === 0))) {
-            setDefectsByModuleData("NO_DATA");
-            console.log('ℹ️ No defects by module data found for this project');
           } else {
-            setDefectsByModuleData(null);
-            console.log('ℹ️ No defects by module data available for this project');
+            setDefectsByModuleData("NO_DATA");
           }
-        } catch (defectsByModuleError: any) {
-          // Silently handle the error - only log to console, don't show error screen
-          console.error('Error fetching Defects by Module:', defectsByModuleError);
-          setDefectsByModuleError(true); // Set error state
-          console.log('🔄 Keeping default Defects by Module data');
+        } else {
           setDefectsByModuleData(null);
-          // Don't re-throw the error to prevent frontend error screen
+          if (defectsByModuleResponse?.error) {
+            // Silently handle error
+            setDefectsByModuleError(true);
+          }
         }
 
       } catch (error) {
-        console.error('Error fetching project data:', error);
+        // Silently handle error
       } finally {
         setLoading(false);
       }
@@ -483,16 +326,13 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   // Helper functions for dynamic project info
   const getProjectRiskFromCardAPI = (projectId: number): 'high' | 'medium' | 'low' => {
     const cardData = projectCardData[projectId];
-    console.log(`🎯 Getting risk for project ${projectId}, card data:`, cardData);
 
     if (!cardData || !cardData.availableRiskLevels || cardData.availableRiskLevels.length === 0) {
-      console.log(`⚠️ No card data found for project ${projectId}, defaulting to medium risk`);
       return 'medium';
     }
 
     // Get the highest risk level from availableRiskLevels
     const riskLevels = cardData.availableRiskLevels;
-    console.log(`🎯 Available risk levels for project ${projectId}:`, riskLevels);
 
     if (riskLevels.includes('High')) {
       return 'high';
@@ -508,7 +348,6 @@ const ProjectDetailScreen: React.FC<ProjectDetailScreenProps> = ({
   const getRiskLevel = () => {
     // Get risk from project card API data
     const risk = getProjectRiskFromCardAPI(selectedProjectTab);
-    console.log(`🎯 Risk level for project ${selectedProjectTab}:`, risk);
 
     switch (risk) {
       case 'high': return 'High Risk';

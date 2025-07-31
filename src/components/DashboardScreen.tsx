@@ -1,6 +1,6 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useCallback } from 'react';
 import {
-  View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, SafeAreaView
+  View, Text, TouchableOpacity, StyleSheet, ScrollView, Dimensions, SafeAreaView, ActivityIndicator, RefreshControl
 } from 'react-native';
 import Icon from 'react-native-vector-icons/MaterialCommunityIcons';
 import Header from './Header';
@@ -27,6 +27,16 @@ interface DashboardScreenProps {
   onProjectPress?: (projectId: number, projectName: string) => void;
 }
 
+// Helper for risk color - MOVED OUTSIDE COMPONENT TO PREVENT INFINITE RENDERS
+const getRiskColor = (risk: 'high' | 'medium' | 'low') => {
+  switch (risk) {
+    case 'high': return '#ce1111';
+    case 'medium': return '#eed61c';
+    case 'low': return '#06ba0b';
+    default: return '#ccc';
+  }
+};
+
 const DashboardScreen: React.FC<DashboardScreenProps> = ({
   onProfilePress,
   onLogoutPress,
@@ -36,64 +46,129 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
   const [defects, setDefects] = useState<Defect[]>([]);
   const [riskFilter, setRiskFilter] = useState<'all' | 'high' | 'medium' | 'low'>('all');
   const [cardColors, setCardColors] = useState<{ [projectId: number]: string }>({});
+  const [loadingColors, setLoadingColors] = useState(false);
+  const [isLoading, setIsLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
 
-  useEffect(() => {
-    // API Call 1: Fetch Projects
-    const projectsUrl = 'http://34.56.162.48:8087/api/v1/projects';
-    console.log('🔥 API Request Details:');
-    console.log('Request URL:', projectsUrl);
-    console.log('Request Method: GET');
-    console.log('Referrer Policy: strict-origin-when-cross-origin');
+  // SUPER FAST: Load main data immediately, colors in background
+  const loadDashboardData = useCallback(async (isRefresh = false) => {
+    try {
+      if (!isRefresh) {
+        setIsLoading(true);
+      }
+      setError(null);
 
-    fetch(projectsUrl)
-      .then(r => {
-        console.log('Status Code:', r.status);
-        return r.json();
-      })
-      .then(res => {
-        setProjects(res.data || []);
-        // Fetch card colors for all projects
-        (res.data || []).forEach((project: Project) => {
+      // FAST: Only load essential data first
+      const [projectsResponse, defectsResponse] = await Promise.all([
+        fetch('http://34.56.162.48:8087/api/v1/projects'),
+        fetch('http://34.56.162.48:8087/api/v1/defectStatus')
+      ]);
+
+      if (!projectsResponse.ok || !defectsResponse.ok) {
+        throw new Error('Failed to fetch data from server');
+      }
+
+      const [projectsData, defectsData] = await Promise.all([
+        projectsResponse.json(),
+        defectsResponse.json()
+      ]);
+
+      const projects = projectsData.data || [];
+      setProjects(projects);
+      setDefects(defectsData.data || []);
+
+      // IMMEDIATE: Show UI instantly with default colors
+      setIsLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      }
+
+      // BACKGROUND: Load colors after UI is shown (non-blocking)
+      if (projects.length > 0) {
+        loadProjectColors(projects);
+      }
+
+    } catch (error) {
+      console.error('Dashboard loading error:', error);
+      setError('Failed to load dashboard data. Please try again.');
+      setIsLoading(false);
+      if (isRefresh) {
+        setRefreshing(false);
+      }
+    }
+  }, []);
+
+  // BACKGROUND: Load colors without blocking UI
+  const loadProjectColors = useCallback(async (projects: Project[]) => {
+    setLoadingColors(true);
+
+    // Load only first 5 colors immediately, rest in batches
+    const priorityProjects = projects.slice(0, 5);
+    const remainingProjects = projects.slice(5);
+
+    try {
+      // Load priority colors first
+      const priorityPromises = priorityProjects.map(async (project: Project) => {
+        try {
           const colorUrl = `http://34.56.162.48:8087/api/v1/dashboard/project-card-color/${project.id}`;
-
-          // API Call 2: Fetch Project Card Colors
-          console.log('🎨 API Request Details:');
-          console.log('Request URL:', colorUrl);
-          console.log('Request Method: GET');
-          console.log('Referrer Policy: strict-origin-when-cross-origin');
-
-          fetch(colorUrl)
-            .then(r => {
-              console.log('Status Code:', r.status);
-              return r.json();
-            })
-            .then(colorRes => {
-              console.log(`🎨 Project Card Color API Response for project ${project.id}:`, JSON.stringify(colorRes, null, 2));
-              setCardColors(prev => ({
-                ...prev,
-                [project.id]: parseColorString(colorRes.data.projectCardColor)
-              }));
-            });
-        });
+          const colorResponse = await fetch(colorUrl);
+          if (!colorResponse.ok) throw new Error('Color fetch failed');
+          const colorRes = await colorResponse.json();
+          return { projectId: project.id, color: parseColorString(colorRes.data.projectCardColor) };
+        } catch {
+          return { projectId: project.id, color: '#888' };
+        }
       });
 
-    // API Call 3: Fetch Defect Status
-    const defectsUrl = 'http://34.56.162.48:8087/api/v1/defectStatus';
-    console.log('🐛 API Request Details:');
-    console.log('Request URL:', defectsUrl);
-    console.log('Request Method: GET');
-    console.log('Referrer Policy: strict-origin-when-cross-origin');
+      const priorityResults = await Promise.all(priorityPromises);
+      const colorMap: { [projectId: number]: string } = {};
+      priorityResults.forEach(({ projectId, color }) => {
+        colorMap[projectId] = color;
+      });
+      setCardColors(colorMap);
 
-    fetch(defectsUrl)
-      .then(r => {
-        console.log('Status Code:', r.status);
-        return r.json();
-      })
-      .then(res => setDefects(res.data || []));
+      // Load remaining colors in background (don't wait)
+      if (remainingProjects.length > 0) {
+        setTimeout(async () => {
+          const remainingPromises = remainingProjects.map(async (project: Project) => {
+            try {
+              const colorUrl = `http://34.56.162.48:8087/api/v1/dashboard/project-card-color/${project.id}`;
+              const colorResponse = await fetch(colorUrl);
+              if (!colorResponse.ok) throw new Error('Color fetch failed');
+              const colorRes = await colorResponse.json();
+              return { projectId: project.id, color: parseColorString(colorRes.data.projectCardColor) };
+            } catch {
+              return { projectId: project.id, color: '#888' };
+            }
+          });
 
+          const remainingResults = await Promise.all(remainingPromises);
+          const updatedColorMap = { ...colorMap };
+          remainingResults.forEach(({ projectId, color }) => {
+            updatedColorMap[projectId] = color;
+          });
+          setCardColors(updatedColorMap);
+        }, 100);
+      }
 
+    } catch (error) {
+      console.error('Color loading error:', error);
+    } finally {
+      setLoadingColors(false);
+    }
   }, []);
+
+  // Handle pull to refresh
+  const onRefresh = useCallback(() => {
+    setRefreshing(true);
+    loadDashboardData(true);
+  }, [loadDashboardData]);
+
+  useEffect(() => {
+    loadDashboardData();
+  }, [loadDashboardData]);
 
   function parseColorString(colorString: string): string {
     // Example: "bg-gradient-to-r from-red-600 to-red-800"
@@ -104,61 +179,126 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
     return '#888'; // fallback
   }
 
-  // Helper: get risk for a project based on color
-  function getProjectRisk(projectId: number): 'high' | 'medium' | 'low' {
-    const projectColor = cardColors[projectId];
-    if (!projectColor) {
-      // Fallback to defect-based logic if no color is set
-      const projectDefects = defects.filter(d => d.projectId === projectId);
-      if (projectDefects.some(d => d.defectStatusName === 'REOPEN' || d.defectStatusName === 'NEW')) return 'high';
-      if (projectDefects.some(d => d.defectStatusName === 'OPEN')) return 'medium';
-      return 'low';
-    }
+  // SUPER FAST: Pre-compute defect lookup table (NO LOOPS IN RENDER)
+  const defectsByProject = useMemo(() => {
+    const lookup: { [projectId: number]: Defect[] } = {};
+    defects.forEach(defect => {
+      if (!lookup[defect.projectId]) {
+        lookup[defect.projectId] = [];
+      }
+      lookup[defect.projectId].push(defect);
+    });
+    return lookup;
+  }, [defects]);
 
-    // Determine risk based on project color
-    // Red color = High Risk
-    if (projectColor === '#ce1111') return 'high';
-    // Yellow color = Medium Risk
-    if (projectColor === '#eed61c') return 'medium';
-    // Green color = Low Risk
-    if (projectColor === '#06ba0b') return 'low';
-
-    // Default fallback
-    return 'low';
-  }
-
-  // Helper: get risk text based on project color
-  function getRiskTextByColor(projectColor: string): string {
+  // FAST: Simple risk calculation (NO LOOPS)
+  const getRiskTextByColor = (projectColor: string): string => {
     if (projectColor === '#ce1111') return 'High Risk';
     if (projectColor === '#eed61c') return 'Medium Risk';
     if (projectColor === '#06ba0b') return 'Low Risk';
-    return 'Low Risk'; // Default
+    return 'Low Risk';
+  };
+
+  // SUPER FAST: All calculations in ONE pass (NO NESTED LOOPS)
+  const { projectRisks, riskCounts, filteredProjects } = useMemo(() => {
+    const risks: { [projectId: number]: 'high' | 'medium' | 'low' } = {};
+    const counts = { high: 0, medium: 0, low: 0 };
+    const filtered: Project[] = [];
+
+    // SINGLE LOOP: Calculate everything at once
+    projects.forEach(project => {
+      let risk: 'high' | 'medium' | 'low' = 'low';
+
+      // Check color first (fastest)
+      const projectColor = cardColors[project.id];
+      if (projectColor === '#ce1111') {
+        risk = 'high';
+      } else if (projectColor === '#eed61c') {
+        risk = 'medium';
+      } else if (projectColor === '#06ba0b') {
+        risk = 'low';
+      } else {
+        // Fallback to defects (use pre-computed lookup)
+        const projectDefects = defectsByProject[project.id] || [];
+        if (projectDefects.some(d => d.defectStatusName === 'REOPEN' || d.defectStatusName === 'NEW')) {
+          risk = 'high';
+        } else if (projectDefects.some(d => d.defectStatusName === 'OPEN')) {
+          risk = 'medium';
+        }
+      }
+
+      risks[project.id] = risk;
+      counts[risk]++;
+
+      // Filter in same loop
+      if (riskFilter === 'all' || risk === riskFilter) {
+        filtered.push(project);
+      }
+    });
+
+    return { projectRisks: risks, riskCounts: counts, filteredProjects: filtered };
+  }, [projects, cardColors, defectsByProject, riskFilter]);
+
+
+
+  // Show loading state
+  if (isLoading) {
+    return (
+      <SafeAreaView style={styles.safeArea}>
+        <Header onLogoutPress={onLogoutPress} />
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#3b82f6" />
+          <Text style={styles.loadingText}>Loading dashboard...</Text>
+        </View>
+        <Footer
+          activeTab="dashboard"
+          onDashboardPress={() => {}}
+          onProjectsPress={() => {}}
+          onAnalyticsPress={() => {}}
+          onProfilePress={onProfilePress}
+        />
+      </SafeAreaView>
+    );
   }
 
-  // Risk counts
-  const highRiskProjects = projects.filter(p => getProjectRisk(p.id) === 'high');
-  const mediumRiskProjects = projects.filter(p => getProjectRisk(p.id) === 'medium');
-  const lowRiskProjects = projects.filter(p => getProjectRisk(p.id) === 'low');
-
-  // Filtered projects
-  const filteredProjects = projects.filter(p => {
-    const risk = getProjectRisk(p.id);
-    if (riskFilter === 'all') return true;
-    return risk === riskFilter;
-  });
-
-
-
+  // Show error state
+  if (error) {
     return (
+      <SafeAreaView style={styles.safeArea}>
+        <Header onLogoutPress={onLogoutPress} />
+        <View style={styles.errorContainer}>
+          <Icon name="alert-circle-outline" size={64} color="#ce1111" />
+          <Text style={styles.errorTitle}>Oops! Something went wrong</Text>
+          <Text style={styles.errorMessage}>{error}</Text>
+          <TouchableOpacity style={styles.retryButton} onPress={() => loadDashboardData()}>
+            <Text style={styles.retryButtonText}>Try Again</Text>
+          </TouchableOpacity>
+        </View>
+        <Footer
+          activeTab="dashboard"
+          onDashboardPress={() => {}}
+          onProjectsPress={() => {}}
+          onAnalyticsPress={() => {}}
+          onProfilePress={onProfilePress}
+        />
+      </SafeAreaView>
+    );
+  }
+
+  return (
     <SafeAreaView style={styles.safeArea}>
       <Header onLogoutPress={onLogoutPress} />
-      <ScrollView style={styles.container}>
-      {/* Heading */}
-      <Text style={styles.heading}>Dashboard Overview</Text>
-      <Text style={styles.subtitle}>
-        Gain insights into your projects with real-time health metrics and status summaries
-      </Text>
-      <View style={styles.divider} />
+      <ScrollView
+        style={styles.container}
+        refreshControl={
+          <RefreshControl refreshing={refreshing} onRefresh={onRefresh} />
+        }
+      >
+        {/* Heading */}
+        <Text style={styles.heading}>Dashboard Overview</Text>
+        <Text style={styles.subtitle}>
+          Gain insights into your projects with real-time health metrics and status summaries
+        </Text>
 
       {/* Project Status Insights */}
             <Text style={styles.sectionTitle}>Project Status Insights</Text>
@@ -167,21 +307,21 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
           color="#ce1111"
           icon="⚠️"
           title="High Risk Projects"
-          count={highRiskProjects.length}
-          subtitle="Immediate attention required"
+          count={riskCounts.high}
+          subtitle="Attention required"
         />
         <StatusCard
           color="#eed61c"
           icon="⚡"
           title="Medium Risk Projects"
-          count={mediumRiskProjects.length}
-          subtitle="Monitor progress closely"
+          count={riskCounts.medium}
+          subtitle="Monitor progress"
         />
         <StatusCard
           color="#06ba0b"
           icon="✅"
           title="Low Risk Projects"
-          count={lowRiskProjects.length}
+          count={riskCounts.low}
           subtitle="Stable and on track"
         />
               </View>
@@ -220,42 +360,54 @@ const DashboardScreen: React.FC<DashboardScreenProps> = ({
                 ))}
             </ScrollView>
 
-            {/* Project Cards */}
-      <View style={styles.projectCardsRow}>
-        {filteredProjects.map((project) => {
-          const risk = getProjectRisk(project.id);
-          const projectColor = cardColors[project.id] || getRiskColor(risk);
-                return (
-            <View key={project.id} style={styles.projectCardWrapper}>
-              <TouchableOpacity
-                style={[
-                  styles.projectCard,
-                  { backgroundColor: projectColor }
-                ]}
-                onPress={() => {
-                  console.log(`🎯 Project clicked: ${project.projectName} (ID: ${project.id})`);
-                  if (onProjectPress) {
-                    onProjectPress(project.id, project.projectName);
-                  } else {
-                    console.log('⚠️ onProjectPress callback not provided');
-                  }
-                }}
-                activeOpacity={0.8}
-              >
-                <Text style={styles.projectCardText}>{project.projectName}</Text>
-            <View style={[
-                  styles.riskLabel,
-                  { backgroundColor: projectColor }
-                ]}>
-                  <Text style={styles.riskLabelText}>
-                    {getRiskTextByColor(projectColor)}
-              </Text>
-            </View>
-              </TouchableOpacity>
-                        </View>
-                      );
-                    })}
-                  </View>
+        {/* Project Cards */}
+        {filteredProjects.length === 0 ? (
+          <View style={styles.emptyState}>
+            <Icon name="folder-outline" size={64} color="#ccc" />
+            <Text style={styles.emptyStateTitle}>No Projects Found</Text>
+            <Text style={styles.emptyStateMessage}>
+              {riskFilter === 'all'
+                ? 'No projects available at the moment.'
+                : `No ${riskFilter} risk projects found.`}
+            </Text>
+          </View>
+        ) : (
+          <View style={styles.projectCardsRow}>
+            {filteredProjects.map((project) => {
+              const risk = projectRisks[project.id];
+              const projectColor = cardColors[project.id] || getRiskColor(risk);
+              const isColorLoading = loadingColors && !cardColors[project.id];
+              return (
+                <View key={project.id} style={styles.projectCardWrapper}>
+                  <TouchableOpacity
+                    style={[
+                      styles.projectCard,
+                      { backgroundColor: projectColor }
+                    ]}
+                    onPress={() => {
+                      if (onProjectPress) {
+                        onProjectPress(project.id, project.projectName);
+                      }
+                    }}
+                    activeOpacity={0.8}
+                  >
+                    <Text style={styles.projectCardText}>{project.projectName}</Text>
+                    <View style={[
+                      styles.riskLabel,
+                      { backgroundColor: 'rgba(0,0,0,0.2)' }
+                    ]}>
+                      {isColorLoading ? (
+                        <ActivityIndicator size="small" color="#fff" />
+                      ) : (
+                        <Text style={styles.riskLabelText}>{getRiskTextByColor(projectColor)}</Text>
+                      )}
+                    </View>
+                  </TouchableOpacity>
+                </View>
+              );
+            })}
+          </View>
+        )}
       </ScrollView>
       <Footer
         activeTab="dashboard"
@@ -290,35 +442,98 @@ function StatusCard({ color, icon, title, count, subtitle }: {
   );
 }
 
-// Helper for risk color
-function getRiskColor(risk: 'high' | 'medium' | 'low') {
-  switch (risk) {
-    case 'high': return '#ce1111';
-    case 'medium': return '#eed61c';
-    case 'low': return '#06ba0b';
-    default: return '#ccc';
-  }
-}
+
 
 
 const styles = StyleSheet.create({
   safeArea: { flex: 1, backgroundColor: '#fff' },
   container: { flex: 1, backgroundColor: '#fff', padding: 16 },
-  heading: { fontSize: 28, fontWeight: 'bold', marginTop: 24, textAlign: 'center', color: '#222' },
-  subtitle: { fontSize: 15, color: '#555', textAlign: 'center', marginVertical: 8 },
+  heading: { fontSize: 28, fontWeight: 'bold', marginTop: 1, textAlign: 'center', color: '#222' },
+  subtitle: { fontSize: 15, color: '#555', textAlign: 'center', marginVertical: 4 },
   divider: { height: 4, width: 80, backgroundColor: '#3b82f6', borderRadius: 2, alignSelf: 'center', marginVertical: 12 },
-  sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginTop: 24, marginBottom: 12 },
+  sectionTitle: { fontSize: 20, fontWeight: 'bold', color: '#222', marginTop: 20, marginBottom: 16 },
+
+  // Loading states
+  loadingContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  loadingText: {
+    marginTop: 16,
+    fontSize: 16,
+    color: '#666',
+    textAlign: 'center',
+  },
+
+  // Error states
+  errorContainer: {
+    flex: 1,
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 32,
+  },
+  errorTitle: {
+    fontSize: 20,
+    fontWeight: 'bold',
+    color: '#ce1111',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  errorMessage: {
+    fontSize: 16,
+    color: '#666',
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 24,
+  },
+  retryButton: {
+    backgroundColor: '#3b82f6',
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    marginTop: 24,
+  },
+  retryButtonText: {
+    color: '#fff',
+    fontSize: 16,
+    fontWeight: 'bold',
+  },
+
+  // Empty states
+  emptyState: {
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 48,
+    marginTop: 32,
+  },
+  emptyStateTitle: {
+    fontSize: 18,
+    fontWeight: 'bold',
+    color: '#666',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  emptyStateMessage: {
+    fontSize: 14,
+    color: '#888',
+    marginTop: 8,
+    textAlign: 'center',
+    lineHeight: 20,
+  },
+
   statusRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
   statusCard: {
     flex: 1, marginHorizontal: 4, backgroundColor: '#fff', borderRadius: 16, borderWidth: 2,
     alignItems: 'center', padding: 12, elevation: 2
   },
   statusCardIcon: { fontSize: 32, marginBottom: 4 },
-  statusCardTitle: { fontSize: 14, fontWeight: 'bold', marginTop: 4 },
+  statusCardTitle: { fontSize: 11.7, fontWeight: 'bold', marginTop: 4 },
   statusCardCount: { fontSize: 28, fontWeight: 'bold', marginVertical: 2 },
   statusCardSubtitle: { fontSize: 12, color: '#888', textAlign: 'center' },
   filterScrollContainer: {
-    marginVertical: 12,
+    marginVertical: 4,
   },
   filterContentContainer: {
     paddingHorizontal: 16,
@@ -329,7 +544,7 @@ const styles = StyleSheet.create({
     paddingVertical: 10,
     borderRadius: 25,
     backgroundColor: '#f3f4f6',
-    marginHorizontal: 6,
+    marginHorizontal: 4,
     minWidth: 100,
     alignItems: 'center',
   },
@@ -343,7 +558,7 @@ const styles = StyleSheet.create({
   },
   projectCardWrapper: {
     width: '33.33%', // This ensures exactly 3 cards per row
-    marginBottom: 16,
+    marginBottom: 6,
     alignItems: 'center',
     paddingHorizontal: 4,
   },
@@ -393,7 +608,6 @@ const styles = StyleSheet.create({
     textShadowOffset: { width: 0, height: 1 },
     textShadowRadius: 2,
   },
-
 });
 
 export default DashboardScreen;

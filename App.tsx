@@ -45,7 +45,6 @@ const App: React.FC = () => {
 
   // Handle project selection
   const handleProjectPress = (projectId: number, projectName: string) => {
-    console.log(`🎯 Navigating to project: ${projectName} (ID: ${projectId})`);
     setSelectedProject({ id: projectId, name: projectName });
     setCurrentScreen('project');
   };

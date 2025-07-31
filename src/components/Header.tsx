@@ -32,7 +32,14 @@ const Header: React.FC<HeaderProps> = ({ onLogoutPress }) => {
 
   return (
     <View style={styles.headerContainer}>
-      <Text style={styles.headerTitle}>Defect Tracker</Text>
+      <View style={styles.titleContainer}>
+        <Image
+          source={require('../assets/images/logo.png')}
+          style={styles.logoIcon}
+          resizeMode="contain"
+        />
+        <Text style={styles.headerTitle}>SGIG Defect Tracker</Text>
+      </View>
       <TouchableOpacity
         style={styles.logoutButton}
         onPress={handleExitPress}
@@ -52,8 +59,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'space-between',
     alignItems: 'center',
-    paddingHorizontal: 16,
-    paddingVertical: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 2,
     backgroundColor: '#fff',
     borderBottomWidth: 1,
     borderBottomColor: '#e5e5e5',
@@ -63,8 +70,17 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.1,
     shadowRadius: 4,
   },
+  titleContainer: {
+    flexDirection: 'row',
+    alignItems: 'center',
+  },
+  logoIcon: {
+    width: 56,
+    height: 50,
+    marginRight: 9,
+  },
   headerTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: 'bold',
     color: '#333',
   },
